@@ -11,6 +11,13 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
+/**
+ * Superclase abstracta que porovee los atruburos y listeners de auditoria JPA
+ * reutilizables para todas las entidades del modelo de dominio.
+ * Al estar anotada con {@link MappedSuperclass}, hereda sus mapas a las subclases
+ * sin generar una tabla fisica independiente en la clase de datos.
+ */
+
 @Getter
 @Setter
 
@@ -31,15 +38,21 @@ public abstract class EntidadAuditable {
 
     @CreatedDate
     //Le indica a Spring Data que debe rellenar automáticamente este campo con la fecha y hora exacta en el momento en que la entidad se crea por primera vez.
-
+    /**
+     * Fecha y hora en la que la entidad fue persosotida pro primera vez.
+     * Gestionado automaticamente por Spring Data JPA.
+     */
 
     @Column(name = "created_date", nullable = false, updatable = false)
-    private LocalDateTime createdDate;
+    private LocalDateTime fechaCreacion;
 
     @LastModifiedDate
     //Indica que este campo debe actualizarse automáticamente con la fecha y hora actual cada vez que la entidad sufra algún cambio o actualización.
-
+    /**
+     * Fecha y hora de la ultima modificacion realizada sobre la entidad.
+     * Actualizado automaticamente encada operacion de actualizacion.
+     */
 
     @Column(name = "last_modified_date", nullable = false)
-    private LocalDateTime lastModifiedDate;
+    private LocalDateTime fechaUltimaModificacion;
 }
