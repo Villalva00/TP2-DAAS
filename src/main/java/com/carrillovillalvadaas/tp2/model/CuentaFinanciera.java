@@ -9,6 +9,17 @@ import lombok.Setter;
 
 import java.util.UUID;
 
+
+/**
+ * Posee relaciones de pertenencia con {@link  Cliente} y de composicion (1:N) con {@link Transaccion}
+ * @see EntidadAuditable
+ * @see Cliente
+ * Transaccion
+ */
+
+
+
+
 @Entity
 //Le indica a JPA que esta clase es una entidad persistente y que estará mapeada a una tabla en la base de datos.
 
