@@ -1,5 +1,6 @@
 package com.carrillovillalvadaas.tp2.model;
 
+import com.carrillovillalvadaas.tp2.model.audit.EntidadAuditable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -17,12 +18,12 @@ import lombok.Setter;
 
 
 @Entity
-@Table(name = "cliente")
+@Table(name = "cliente ")
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-public class Cliente {
+public class Cliente extends EntidadAuditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

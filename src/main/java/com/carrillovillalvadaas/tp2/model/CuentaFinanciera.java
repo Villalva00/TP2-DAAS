@@ -16,18 +16,37 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.UUID;
+
 @Entity
+//Le indica a JPA que esta clase es una entidad persistente y que estará mapeada a una tabla en la base de datos.
+
+
 @Table(name = "cuenta_financiera")
+//Define explícitamente el nombre que tendrá la tabla en la base de datos (cuenta_financiera).
+
+
 @Inheritance(strategy = InheritanceType.JOINED)
+//es la estrategia que le indica a Hibernate/JPA cómo traducir una jerarquía de clases de Java (donde unas heredan de otras) a tablas relacionales en una base de datos SQL.
+//La palabra clave aquí es JOINED (Unidas). Significa que cada clase en la jerarquía tendrá su propia tabla independiente, y se conectarán entre sí mediante un JOIN (una relación de clave primaria/foránea).
+
+
 @Getter
 @Setter
+
 @NoArgsConstructor
 @AllArgsConstructor
+
+
+
 public abstract class CuentaFinanciera extends EntidadAuditable {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    //Indica que este campo es la clave primaria (Primary Key) de la tabla, es decir, el identificador único de cada cuenta.
+
+
+    @GeneratedValue
+    private UUID id;
 
     @Column(nullable = false, unique = true,  length = 22)
     private long cbu;
@@ -39,9 +58,10 @@ public abstract class CuentaFinanciera extends EntidadAuditable {
     private Double  saldoOperativo;
 
     @Enumerated(EnumType.STRING)
+    //Esta anotación es fundamental cuando usas un Enum (como tu clase EstadoCuenta). Le indica a Hibernate que guarde el valor en la base de datos como texto plano (por ejemplo: "ACTIVA", "SUSPENDIDA", "CERRADA") en lugar de guardarlo como un número ordinal (0, 1, 2). Guardarlo como texto hace que tu base de datos sea mucho más fácil de leer y auditar directamente.
+
     @Column(nullable = false, length = 20)
     private EstadoCuenta estado ;
-
 
 
 

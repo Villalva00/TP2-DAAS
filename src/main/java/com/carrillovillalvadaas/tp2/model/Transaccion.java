@@ -1,5 +1,6 @@
 package com.carrillovillalvadaas.tp2.model;
 
+import com.carrillovillalvadaas.tp2.model.audit.EntidadAuditable;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -19,7 +20,7 @@ import java.time.LocalTime;
 @AllArgsConstructor
 @NoArgsConstructor
 
-public class Transaccion {
+public class Transaccion extends EntidadAuditable {
 
 
     @Id
