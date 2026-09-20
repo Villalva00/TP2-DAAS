@@ -1,5 +1,6 @@
 package com.carrillovillalvadaas.tp2.model;
 
+import com.carrillovillalvadaas.tp2.model.audit.EntidadAuditable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,7 +23,7 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public abstract class CuentaFinanciera {
+public abstract class CuentaFinanciera extends EntidadAuditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
