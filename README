@@ -1,0 +1,77 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-100%25%20Funcionando-success?style=for-the-badge&logo=springboot" alt="Status">
+  <img src="https://img.shields.io/badge/Arquitectura-JOINED-blue?style=for-the-badge&logo=java" alt="Architecture">
+  <img src="https://img.shields.io/badge/Base%20de%20Datos-MySQL%20%2F%20Binary%20UUIDs-orange?style=for-the-badge&logo=mysql" alt="Database">
+</p>
+
+<h1 align="center"> 🏔️ PunaCode Labs 🚀</h1>
+<h3 align="center">Sistema Bancario Inteligente — Trabajo Práctico N° 2</h3>
+
+<p align="center">
+  <em>"Construyendo cimientos robustos desde las alturas de Jujuy para el mundo."</em>
+</p>
+
+---
+
+## 🏦 Sobre el Proyecto
+
+Bienvenido al repositorio oficial del **Sistema Bancario**, desarrollado en el marco de la materia **Desarrollo y Arquitecturas Avanzadas de Software (DAAS)** de la **Facultad de Ingeniería - Universidad Nacional de Jujuy (UNJu)**. 
+
+Este sistema implementa un backend moderno, seguro y altamente estructurado bajo los principios de la arquitectura de software multiniveles, aplicando patrones de diseño avanzados, persistencia con mapeo objeto-relacional (ORM) y un estricto control de auditoría de transacciones.
+
+---
+
+## 👥 El Equipo de Ingeniería (**PunaCode Labs**)
+
+| Integrante | Rol en la Fábrica de Software |
+| :--- | :--- |
+| **Villalva, Elias Maciel** | Lead Backend & Architecture Engineer |
+| **Carrillo, Gonzalo Alejo** | Database & Domain Modeling Engineer |
+
+*📍 Ubicación:* San Salvador de Jujuy, Argentina 🇦🇷  
+*🎓 Carrera:* Ingeniería Informática  
+
+---
+
+## 🛠️ Stack Tecnológico
+
+El motor bajo el capó de nuestra solución está impulsado por tecnologías de punta:
+
+*   **Lenguaje:** Java (JDK 25)
+*   **Framework:** Spring Boot & Spring Data JPA
+*   **Base de Datos:** MySQL (con optimización de UUIDs en formato binario `BINARY(16)`)
+*   **Gestión de Dependencias:** Maven
+*   **Librerías de Utilidad:** Lombok (para un código limpio y sin boilerplate)
+*   **Auditoría:** JPA Auditing (`@CreatedDate`, `@LastModifiedDate`)
+
+---
+
+## 📐 Decisiones Arquitectónicas Destacadas
+
+1.  **Herencia con `InheritanceType.JOINED`:**  
+    Implementación de una jerarquía limpia para las cuentas financieras (`CuentaFinanciera` como clase abstracta base, ramificada en `CajaAhorro` y `CuentaCorriente`), optimizando la normalización de la base de datos en tablas unidas.
+2.  **Seguridad e Integridad de Datos:**  
+    Manejo nativo de identificadores universales únicos (`UUID`) almacenados eficientemente en formato binario mediante la función `UUID_TO_BIN()`.
+3.  **Auditoría Automática:**  
+    Superclase `EntidadAuditable` transversal a todo el modelo para garantizar la trazabilidad temporal de cada inserción y modificación en el sistema.
+
+---
+
+## 🚀 Cómo poner en marcha el sistema
+
+1.  **Clonar el repositorio:**
+    ```bash
+    git clone [https://github.com/tu-usuario/TP2.git](https://github.com/tu-usuario/TP2.git)
+    ```
+2.  **Configurar las credenciales:**  
+    Asegúrate de configurar tus variables de entorno locales para la base de datos en el archivo `application.properties`:
+    *   `DB_USERNAME`
+    *   `DB_PASSWORD`
+3.  **Ejecutar la aplicación:**  
+    Abre el proyecto en tu IDE favorito (IntelliJ IDEA recomendado) y corre la clase principal `Tp2Application`. ¡El script `data.sql` se encargará de poblar la base de datos automáticamente!
+
+---
+
+<p align="center">
+  <b>Desarrollado con 💻 y mucho ☕ en Jujuy, Argentina.</b>
+</p>

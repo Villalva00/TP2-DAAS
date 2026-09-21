@@ -1,0 +1,61 @@
+package com.carrillovillalvadaas.tp2.model.audit;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.MappedSuperclass;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import java.time.LocalDateTime;
+
+/**
+ * Superclase abstracta que porovee los atruburos y listeners de auditoria JPA
+ * reutilizables para todas las entidades del modelo de dominio.
+ * Al estar anotada con {@link MappedSuperclass}, hereda sus mapas a las subclases
+ * sin generar una tabla fisica independiente en la clase de datos.
+ */
+
+@Getter
+@Setter
+
+
+/**
+ * Le indica a Hibernate/JPA que esta clase no es una tabla en la base de datos por sí misma, pero que sus atributos (createdDate y lastModifiedDate) deben ser heredados y mapeados como columnas en las tablas de las entidades hijas que extiendan de esta clase.
+ */
+@MappedSuperclass
+
+
+/**
+ * Conecta la entidad con el mecanismo de escucha de Spring Data JPA. Este "oyente" detecta cuándo una entidad está a punto de ser guardada o actualizada en la base de datos para inyectar los valores correspondientes.
+ */
+@EntityListeners(AuditingEntityListener.class)
+
+
+
+
+
+public abstract class EntidadAuditable {
+
+    /**
+     * Fecha y hora en la que la entidad fue persosotida pro primera vez.
+     * Gestionado automaticamente por Spring Data JPA.
+     * Le indica a Spring Data que debe rellenar automáticamente este campo con la fecha y hora exacta en el momento en que la entidad se crea por primera vez.
+     */
+    @CreatedDate
+    @Column(name = "created_date", nullable = false, updatable = false)
+    private LocalDateTime fechaCreacion;
+
+
+    /**
+     * Fecha y hora de la ultima modificacion realizada sobre la entidad.
+     * Actualizado automaticamente encada operacion de actualizacion.
+     * Indica que este campo debe actualizarse automáticamente con la fecha y hora actual cada vez que la entidad sufra algún cambio o actualización.
+     */
+
+    @LastModifiedDate
+    @Column(name = "last_modified_date", nullable = false)
+    private LocalDateTime fechaUltimaModificacion;
+}
