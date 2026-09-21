@@ -9,14 +9,28 @@ import java.util.List;
 import java.util.UUID;
 
 /**
+ * Representa un cliente del sistema financiero, el cual puede poseer cuentas financieras y mantener relaciones jerárquicas con otros clientes.
+ * Extiende de {@link EntidadAuditable}.
+ *
  * @see EntidadAuditable
  * @see CuentaFinanciera
  */
 
+
+/**
+ * Le indica a JPA que esta clase es una entidad persistente y que estará mapeada a una tabla en la base de datos.
+ */
 @Entity
+
+/**
+ * //Define explícitamente el nombre que tendrá la tabla en la base de datos (cliente).
+*/
 @Table(name = "cliente ")
+
+
 @Getter
 @Setter
+
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
@@ -40,7 +54,9 @@ public class Cliente extends EntidadAuditable {
 
 
 
-
+    /**
+     * Razón social del cliente, aplicable en caso de personas jurídicas.
+     */
     @Column(name = "razon_social", length = 100)
     private String razonSocial;
 
@@ -60,10 +76,15 @@ public class Cliente extends EntidadAuditable {
 
 
 
-
+    /**
+     * Dirección física de residencia o domicilio del cliente.
+     */
     @Column(length = 200)
     private String direccion;
 
+    /**
+     * Número de teléfono de contacto del cliente.
+     */
     @Column(length = 30)
     private String telefono;
 
