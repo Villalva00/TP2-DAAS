@@ -1,5 +1,8 @@
 package com.carrillovillalvadaas.tp2.service.impl;
 
+import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
+import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
+import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
 import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
 import com.carrillovillalvadaas.tp2.service.ClienteService;
@@ -10,7 +13,18 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
+/**
+ * Implementación oficial de la interfaz {@link ClienteService}.
+ * <p>
+ * Gestiona la lógica de negocio y las reglas de validación para los clientes del banco,
+ * asegurando el desacoplamiento mediante el mapeo de Entidades a DTOs y garantizando
+ * la atomicidad transaccional con la anotación {@link Transactional}.
+ * </p>
+ *
+ * @author Desarrollo y Arquitecturas Avanzadas de Software (UNJu)
+ */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -18,68 +32,133 @@ public class ClienteServiceImpl implements ClienteService {
 
     private final ClienteRepository clienteRepository;
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Valida que no existan duplicados por CUIL o email antes de realizar la persistencia,
+     * transformando el DTO de entrada en Entidad y devolviendo un DTO de salida estructurado.
+     * </p>
+     */
     @Override
     @Transactional
-    public Cliente crearCliente(Cliente cliente) {
-        log.info("Iniciando proceso de creación de cliente con CUIL: {}", cliente.getCuil());
+    public ClienteResponseDto crearCliente(ClienteRequestDto requestDto) {
+        log.info("Iniciando proceso de creación de cliente con CUIL: {}", requestDto.getCuil());
 
-        if (clienteRepository.existsByCuilOrEmail(cliente.getCuil(), cliente.getEmail())) {
+        long cuilLong = Long.parseLong(requestDto.getCuil());
+
+        if (clienteRepository.existsByCuilOrEmail(cuilLong, requestDto.getEmail())) {
             log.error("Fallo al crear cliente. Ya existe un registro con CUIL {} o Email {}",
-                    cliente.getCuil(), cliente.getEmail());
+                    cuilLong, requestDto.getEmail());
             throw new IllegalArgumentException("Ya existe un cliente registrado con el mismo CUIL o Email.");
         }
 
-        Cliente clienteGuardado = clienteRepository.save(cliente);
+        // Mapeo explícito de RequestDto a la Entidad JPA
+        Cliente clienteEntity = Cliente.builder()
+                .nombre(requestDto.getNombre())
+                .cuil(cuilLong)
+                .email(requestDto.getEmail())
+                .telefono(requestDto.getTelefono())
+                .direccion(requestDto.getDireccion())
+                .build();
 
+        Cliente clienteGuardado = clienteRepository.save(clienteEntity);
         log.info("Cliente registrado exitosamente con ID: {}", clienteGuardado.getId());
-        return clienteGuardado;
+
+        return mapearAResponseDto(clienteGuardado);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Utiliza {@link Transactional}(readOnly = true) optimizando el rendimiento de lectura en base de datos
+     * y lanza {@link RecursoNoEncontradoException} (mapeada a HTTP 404) si el registro no es hallado[cite: 9, 12].
+     * </p>
+     */
     @Override
     @Transactional(readOnly = true)
-    public Cliente obtenerPorId(UUID id) {
+    public ClienteResponseDto obtenerPorId(UUID id) {
         log.debug("Buscando cliente por ID: {}", id);
-        return clienteRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado con el ID: " + id));
+        Cliente cliente = clienteRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cliente no encontrado con el ID: " + id)); //[cite: 9, 12]
+
+        return mapearAResponseDto(cliente);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional(readOnly = true)
-    public Cliente obtenerPorCuil(long cuil) {
+    public ClienteResponseDto obtenerPorCuil(long cuil) {
         log.debug("Buscando cliente por CUIL: {}", cuil);
-        return clienteRepository.findByCuil(cuil)
-                .orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado con el CUIL: " + cuil));
+        Cliente cliente = clienteRepository.findByCuil(cuil)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cliente no encontrado con el CUIL: " + cuil)); //[cite: 9, 12]
+
+        return mapearAResponseDto(cliente);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional(readOnly = true)
-    public List<Cliente> listarTodos() {
+    public List<ClienteResponseDto> listarTodos() {
         log.debug("Listando la totalidad de los clientes registrados");
-        return clienteRepository.findAll();
+        return clienteRepository.findAll().stream()
+                .map(this::mapearAResponseDto)
+                .collect(Collectors.toList());
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional
-    public Cliente actualizarCliente(UUID id, Cliente clienteDetalles) {
+    public ClienteResponseDto actualizarCliente(UUID id, ClienteRequestDto requestDto) {
         log.info("Iniciando actualización de datos para el cliente con ID: {}", id);
 
-        Cliente clienteExistente = obtenerPorId(id);
+        Cliente clienteExistente = clienteRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cliente no encontrado con el ID: " + id)); //[cite: 9, 12]
 
-        // Actualización selectiva de campos modificables del dominio
-        clienteExistente.setNombre(clienteDetalles.getNombre());
-        clienteExistente.setEmail(clienteDetalles.getEmail());
-        clienteExistente.setDireccion(clienteDetalles.getDireccion());
-        clienteExistente.setTelefono(clienteDetalles.getTelefono());
+        // Actualización selectiva de atributos modificables
+        clienteExistente.setNombre(requestDto.getNombre());
+        clienteExistente.setEmail(requestDto.getEmail());
+        clienteExistente.setDireccion(requestDto.getDireccion());
+        clienteExistente.setTelefono(requestDto.getTelefono());
 
-        return clienteRepository.save(clienteExistente);
+        Cliente clienteActualizado = clienteRepository.save(clienteExistente);
+        log.info("Cliente con ID {} actualizado correctamente", id);
+
+        return mapearAResponseDto(clienteActualizado);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional
     public void eliminarPorId(UUID id) {
         log.info("Solicitada la eliminación del cliente con ID: {}", id);
-        Cliente cliente = obtenerPorId(id);
+        Cliente cliente = clienteRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cliente no encontrado con el ID: " + id)); //[cite: 9, 12]
+
         clienteRepository.delete(cliente);
         log.info("Cliente con ID {} eliminado correctamente", id);
+    }
+
+    /**
+     * Método auxiliar privado para centralizar y encapsular el mapeo
+     * de la Entidad de persistencia {@link Cliente} hacia el {@link ClienteResponseDto}.
+     *
+     * @param cliente Entidad recuperada de la base de datos.
+     * @return El DTO de salida listo para ser expuesto por la API.
+     */
+    private ClienteResponseDto mapearAResponseDto(Cliente cliente) {
+        return ClienteResponseDto.builder()
+                .id(cliente.getId())
+                .nombre(cliente.getNombre())
+                .cuil(String.valueOf(cliente.getCuil()))
+                .email(cliente.getEmail())
+                .build();
     }
 }

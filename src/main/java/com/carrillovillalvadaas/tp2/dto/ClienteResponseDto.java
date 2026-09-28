@@ -3,6 +3,7 @@ package com.carrillovillalvadaas.tp2.dto;
 import lombok.*;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * Objeto de transferencia de datos (DTO) para exponer la información pública
@@ -18,7 +19,7 @@ public class ClienteResponseDto {
     /**
      * Identificador único del cliente en el sistema.
      */
-    private Long id;
+    private UUID id;
 
     /**
      * Nombre o razón social registrada del cliente.

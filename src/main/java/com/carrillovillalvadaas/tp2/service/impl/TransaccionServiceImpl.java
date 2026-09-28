@@ -1,5 +1,9 @@
 package com.carrillovillalvadaas.tp2.service.impl;
 
+import com.carrillovillalvadaas.tp2.dto.TransaccionRequestDto;
+import com.carrillovillalvadaas.tp2.dto.TransaccionResponseDto;
+import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
+import com.carrillovillalvadaas.tp2.exception.SaldoInsuficienteException;
 import com.carrillovillalvadaas.tp2.model.*;
 import com.carrillovillalvadaas.tp2.repository.CuentaFinancieraRepository;
 import com.carrillovillalvadaas.tp2.repository.TransaccionRepository;
@@ -9,10 +13,23 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
+/**
+ * Implementación oficial de la interfaz {@link TransaccionService}.
+ * <p>
+ * Encapsula la lógica de negocio para el procesamiento de transacciones financieras
+ * (depósitos y extracciones), garantizando la atomicidad mediante {@link Transactional}
+ * y el manejo robusto de excepciones personalizadas para recursos no encontrados o saldo insuficiente.
+ * </p>
+ *
+ * @author Carrillo Gonzalo Alejo, Villalva Elias Maciel
+ * Desarrollo y Arquitecturas Avanzadas de Software (UNJu)
+ */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -21,31 +38,47 @@ public class TransaccionServiceImpl implements TransaccionService {
     private final TransaccionRepository transaccionRepository;
     private final CuentaFinancieraRepository cuentaFinancieraRepository;
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Busca la cuenta por su CBU, incrementa el saldo operativo de forma atómica
+     * y registra la transacción con estado COMPLETADA.
+     * </p>
+     */
     @Override
     @Transactional
-    public Transaccion registrarDeposito(UUID cuentaId, Double monto) {
-        log.info("Registrando depósito de {} en la cuenta {}", monto, cuentaId);
+    public TransaccionResponseDto registrarDeposito(TransaccionRequestDto requestDto) {
+        log.info("Registrando depósito de {} en cuenta CBU: {}", requestDto.getMonto(), requestDto.getCbuCuenta());
 
-        CuentaFinanciera cuenta = obtenerCuenta(cuentaId);
-        validarMonto(monto);
+        CuentaFinanciera cuenta = cuentaFinancieraRepository.findByCbu(Long.parseLong(requestDto.getCbuCuenta()))
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cuenta no encontrada con CBU: " + requestDto.getCbuCuenta()));
 
-        cuenta.depositar(monto);
+        cuenta.depositar(requestDto.getMonto().doubleValue());
         cuentaFinancieraRepository.save(cuenta);
 
-        Transaccion transaccion = construirTransaccion(cuenta, monto, TipoTransaccion.DEPOSITO, EstadoTransaccion.COMPLETADA);
-        return transaccionRepository.save(transaccion);
+        Transaccion transaccion = construirTransaccion(cuenta, requestDto.getMonto().doubleValue(), TipoTransaccion.DEPOSITO, EstadoTransaccion.COMPLETADA);
+        Transaccion guardada = transaccionRepository.save(transaccion);
+
+        return mapearAResponseDto(guardada);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Busca la cuenta por su CBU, intenta extraer el monto solicitado y evalúa el éxito de la operación.
+     * Si no hay fondos suficientes, registra la transacción como RECHAZADA y lanza {@link SaldoInsuficienteException}.
+     * </p>
+     */
     @Override
     @Transactional
-    public Transaccion registrarExtraccion(UUID cuentaId, Double monto) {
-        log.info("Registrando extracción de {} en la cuenta {}", monto, cuentaId);
+    public TransaccionResponseDto registrarExtraccion(TransaccionRequestDto requestDto) {
+        log.info("Registrando extracción de {} en cuenta CBU: {}", requestDto.getMonto(), requestDto.getCbuCuenta());
 
-        CuentaFinanciera cuenta = obtenerCuenta(cuentaId);
-        validarMonto(monto);
+        CuentaFinanciera cuenta = cuentaFinancieraRepository.findByCbu(Long.parseLong(requestDto.getCbuCuenta()))
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cuenta no encontrada con CBU: " + requestDto.getCbuCuenta()));
 
         Double saldoAntes = cuenta.getSaldoOperativo();
-        cuenta.extraer(monto);
+        cuenta.extraer(requestDto.getMonto().doubleValue());
         boolean extraccionExitosa = !saldoAntes.equals(cuenta.getSaldoOperativo());
 
         EstadoTransaccion estado;
@@ -53,68 +86,92 @@ public class TransaccionServiceImpl implements TransaccionService {
             cuentaFinancieraRepository.save(cuenta);
             estado = EstadoTransaccion.COMPLETADA;
         } else {
-            log.warn("Fondos insuficientes en la cuenta {} para extraer {}", cuentaId, monto);
+            log.warn("Fondos insuficientes en cuenta CBU {} para extraer {}", requestDto.getCbuCuenta(), requestDto.getMonto());
             estado = EstadoTransaccion.RECHAZADA;
         }
 
-        Transaccion transaccion = construirTransaccion(cuenta, monto, TipoTransaccion.EXTRACCION, estado);
+        Transaccion transaccion = construirTransaccion(cuenta, requestDto.getMonto().doubleValue(), TipoTransaccion.EXTRACCION, estado);
         Transaccion transaccionGuardada = transaccionRepository.save(transaccion);
 
         if (!extraccionExitosa) {
-            throw new IllegalStateException("Fondos insuficientes para extraer " + monto + " de la cuenta " + cuentaId);
+            throw new SaldoInsuficienteException("Fondos insuficientes para realizar la extracción por un monto de " + requestDto.getMonto());
         }
-        return transaccionGuardada;
+
+        return mapearAResponseDto(transaccionGuardada);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Utiliza transacciones de solo lectura para optimizar el rendimiento al buscar por ID.
+     * </p>
+     */
     @Override
     @Transactional(readOnly = true)
-    public Transaccion obtenerPorId(Long id) {
+    public TransaccionResponseDto obtenerPorId(Long id) {
         log.debug("Buscando transacción por ID: {}", id);
-        return transaccionRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Transacción no encontrada con el ID: " + id));
+        Transaccion transaccion = transaccionRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Transacción no encontrada con el ID: " + id));
+        return mapearAResponseDto(transaccion);
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional(readOnly = true)
-    public List<Transaccion> listarPorCuenta(UUID cuentaId) {
-        log.debug("Listando transacciones de la cuenta: {}", cuentaId);
-        return transaccionRepository.findByCuentaFinancieraId(cuentaId);
+    public List<TransaccionResponseDto> listarPorCuenta(UUID cuentaId) {
+        log.debug("Listando transacciones de la cuenta ID: {}", cuentaId);
+        return transaccionRepository.findByCuentaFinancieraId(cuentaId).stream()
+                .map(this::mapearAResponseDto)
+                .collect(Collectors.toList());
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional(readOnly = true)
-    public List<Transaccion> listarPorTipo(TipoTransaccion tipo) {
+    public List<TransaccionResponseDto> listarPorTipo(TipoTransaccion tipo) {
         log.debug("Listando transacciones de tipo: {}", tipo);
-        return transaccionRepository.findByTipo(tipo);
+        return transaccionRepository.findByTipo(tipo).stream()
+                .map(this::mapearAResponseDto)
+                .collect(Collectors.toList());
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional(readOnly = true)
-    public List<Transaccion> listarPorEstado(EstadoTransaccion estado) {
+    public List<TransaccionResponseDto> listarPorEstado(EstadoTransaccion estado) {
         log.debug("Listando transacciones con estado: {}", estado);
-        return transaccionRepository.findByEstadoTransaccion(estado);
+        return transaccionRepository.findByEstadoTransaccion(estado).stream()
+                .map(this::mapearAResponseDto)
+                .collect(Collectors.toList());
     }
 
+    /**
+     * {@inheritDoc}
+     */
     @Override
     @Transactional(readOnly = true)
-    public List<Transaccion> listarTodas() {
+    public List<TransaccionResponseDto> listarTodas() {
         log.debug("Listando la totalidad de las transacciones");
-        return transaccionRepository.findAll();
+        return transaccionRepository.findAll().stream()
+                .map(this::mapearAResponseDto)
+                .collect(Collectors.toList());
     }
 
-    // ---- métodos privados de apoyo ----
-
-    private CuentaFinanciera obtenerCuenta(UUID cuentaId) {
-        return cuentaFinancieraRepository.findById(cuentaId)
-                .orElseThrow(() -> new IllegalArgumentException("Cuenta financiera no encontrada con el ID: " + cuentaId));
-    }
-
-    private void validarMonto(Double monto) {
-        if (monto == null || monto <= 0) {
-            throw new IllegalArgumentException("El monto de la transacción debe ser mayor a cero.");
-        }
-    }
-
+    /**
+     * Método auxiliar privado para construir y poblar una entidad de tipo {@link Transaccion}.
+     *
+     * @param cuenta Cuenta financiera asociada a la operación.
+     * @param monto Monto monetario de la transacción.
+     * @param tipo Tipo de transacción (DEPÓSITO o EXTRACCIÓN).
+     * @param estado Estado de resolución de la transacción.
+     * @return Una nueva instancia de {@link Transaccion} construida mediante el patrón Builder.
+     */
     private Transaccion construirTransaccion(CuentaFinanciera cuenta, Double monto, TipoTransaccion tipo, EstadoTransaccion estado) {
         return Transaccion.builder()
                 .fechaHora(LocalDateTime.now())
@@ -122,6 +179,24 @@ public class TransaccionServiceImpl implements TransaccionService {
                 .tipo(tipo)
                 .estadoTransaccion(estado)
                 .cuentaFinanciera(cuenta)
+                .build();
+    }
+
+    /**
+     * Método auxiliar privado para mapear la entidad {@link Transaccion} hacia un {@link TransaccionResponseDto}.
+     *
+     * @param transaccion Entidad persistida en la base de datos.
+     * @return El DTO de respuesta estructurado para la capa web.
+     */
+    private TransaccionResponseDto mapearAResponseDto(Transaccion transaccion) {
+        return TransaccionResponseDto.builder()
+                .idTransaccion(transaccion.getId())
+                .cbuCuenta(transaccion.getCuentaFinanciera() != null ? String.valueOf(transaccion.getCuentaFinanciera().getCbu()) : null)
+                .monto(BigDecimal.valueOf(transaccion.getMonto()))
+                .tipoTransaccion(transaccion.getTipo() != null ? transaccion.getTipo().name() : null)
+                .estadoTransaccion(transaccion.getEstadoTransaccion() != null ? transaccion.getEstadoTransaccion().name() : null)
+                .fechaHora(transaccion.getFechaHora())
+                .mensaje("Operación procesada correctamente.")
                 .build();
     }
 }

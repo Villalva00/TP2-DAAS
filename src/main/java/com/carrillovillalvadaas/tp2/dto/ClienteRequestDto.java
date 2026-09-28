@@ -1,10 +1,8 @@
 package com.carrillovillalvadaas.tp2.dto;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.*;
 import lombok.*;
+import org.springframework.context.annotation.PropertySource;
 
 /**
  * Objeto de transferencia de datos (DTO) para la recepción y validación
@@ -31,6 +29,7 @@ public class ClienteRequestDto {
      * Debe respetar estrictamente el formato estándar XX-XXXXXXXX-X.
      */
     @NotBlank(message = "El CUIL es obligatorio.")
+    @Positive(message = "El numero ingresado no es valido")
     @Pattern(regexp = "\\d{11}", message = "El CUIL debe contener exactamente 11 digitos numericos sin guion.")
     private String cuil;
 
@@ -46,6 +45,7 @@ public class ClienteRequestDto {
      * Número de teléfono de contacto del cliente.
      */
     @NotBlank(message = "El teléfono es obligatorio.")
+    @Positive(message = "El numero ingresado no es valido")
     @Size(max = 15, message = "El numero de telefono no debe superar los 15 digitos numericos.")
     private String telefono;
 

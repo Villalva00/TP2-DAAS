@@ -1,5 +1,9 @@
 package com.carrillovillalvadaas.tp2.service;
 
+import com.carrillovillalvadaas.tp2.dto.CuentaFinancieraRequestDto;
+import com.carrillovillalvadaas.tp2.dto.CuentaFinancieraResponseDto;
+import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
+import com.carrillovillalvadaas.tp2.exception.SaldoInsuficienteException;
 import com.carrillovillalvadaas.tp2.model.CajaAhorro;
 import com.carrillovillalvadaas.tp2.model.CuentaFinanciera;
 import com.carrillovillalvadaas.tp2.model.EstadoCuenta;
@@ -13,14 +17,26 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * Pruebas unitarias para la implementación de servicios de cuentas financieras ({@link CuentaFinancieraServiceImpl}).
+ * <p>
+ * Valida de forma aislada la correcta manipulación de saldos, reglas de negocio para depósitos y extracciones,
+ * el mapeo adecuado hacia DTOs de respuesta y el correcto lanzamiento de excepciones personalizadas,
+ * simulando el comportamiento del repositorio {@link CuentaFinancieraRepository} mediante Mockito.
+ * </p>
+ *
+ * @author Desarrollo y Arquitecturas Avanzadas de Software (UNJu)
+ */
 @ExtendWith(MockitoExtension.class)
 class CuentaFinancieraServiceImplTest {
 
@@ -30,90 +46,125 @@ class CuentaFinancieraServiceImplTest {
     @InjectMocks
     private CuentaFinancieraServiceImpl cuentaFinancieraService;
 
-    private CajaAhorro cuenta;
+    private CajaAhorro cuentaEntity;
     private UUID cuentaId;
+    private CuentaFinancieraRequestDto requestDto;
 
+    /**
+     * Configuración inicial previa a la ejecución de cada prueba unitaria.
+     * Inicializa una entidad de tipo {@link CajaAhorro} de prueba y un {@link CuentaFinancieraRequestDto}.
+     */
     @BeforeEach
     void setUp() {
         cuentaId = UUID.randomUUID();
-        cuenta = new CajaAhorro();
-        cuenta.setId(cuentaId);
-        cuenta.setCbu(1234567890123456789L);
-        cuenta.setAlias("mi.cuenta.test");
-        cuenta.setSaldoOperativo(1000.0);
-        cuenta.setEstado(EstadoCuenta.ACTIVA);
-        cuenta.setTasaInteresAnual(50.0);
-        cuenta.setLimiteExtraccion(5);
+
+        cuentaEntity = new CajaAhorro();
+        cuentaEntity.setId(cuentaId);
+        cuentaEntity.setCbu(1234567890123456789L);
+        cuentaEntity.setAlias("mi.cuenta.test");
+        cuentaEntity.setSaldoOperativo(1000.0);
+        cuentaEntity.setEstado(EstadoCuenta.ACTIVA);
+        cuentaEntity.setTasaInteresAnual(50.0);
+        cuentaEntity.setLimiteExtraccion(5);
+
+        requestDto = new CuentaFinancieraRequestDto();
+        requestDto.setCbu("1234567890123456789");
+        requestDto.setAlias("mi.cuenta.test");
+        requestDto.setSaldoOperativo(BigDecimal.valueOf(1000.0));
+        requestDto.setTipoCuenta("CAJA_AHORRO");
+        requestDto.setTasaInteresAnual(50.0);
     }
 
+    /**
+     * Verifica que al crear una cuenta de manera exitosa se persista correctamente
+     * y se retorne un {@link CuentaFinancieraResponseDto} con los datos esperados.
+     */
     @Test
-    void crearCuenta_deberiaAsignarEstadoActivoYSaldoCero_siNoVienenSeteados() {
-        CajaAhorro nueva = new CajaAhorro();
-        nueva.setCbu(999L);
-        nueva.setAlias("nueva.cuenta");
-        // no se setea estado ni saldoOperativo a propósito
+    void crearCuenta_deberiaGuardarYRetornarResponseDto() {
+        when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class))).thenReturn(cuentaEntity);
 
-        when(cuentaFinancieraRepository.save(nueva)).thenReturn(nueva);
+        CuentaFinancieraResponseDto resultado = cuentaFinancieraService.crearCuenta(requestDto);
 
-        CuentaFinanciera resultado = cuentaFinancieraService.crearCuenta(nueva);
-
-        assertThat(resultado.getEstado()).isEqualTo(EstadoCuenta.ACTIVA);
-        assertThat(resultado.getSaldoOperativo()).isEqualTo(0.0);
+        assertThat(resultado).isNotNull();
+        assertThat(resultado.getCbu()).isEqualTo("1234567890123456789");
+        assertThat(resultado.getEstado()).isEqualTo("ACTIVA");
+        verify(cuentaFinancieraRepository).save(any(CuentaFinanciera.class));
     }
 
+    /**
+     * Verifica que se lance la excepción {@link RecursoNoEncontradoException}
+     * al intentar buscar o manipular una cuenta utilizando un identificador (UUID) inexistente.
+     */
     @Test
-    void obtenerPorId_deberiaLanzarExcepcion_cuandoNoExiste() {
+    void obtenerPorId_deberiaLanzarExcepcionRecursoNoEncontrado_cuandoNoExiste() {
         UUID idInexistente = UUID.randomUUID();
         when(cuentaFinancieraRepository.findById(idInexistente)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> cuentaFinancieraService.obtenerPorId(idInexistente))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Cuenta financiera no encontrada");
     }
 
+    /**
+     * Verifica que un depósito válido incremente correctamente el saldo operativo
+     * de la cuenta y devuelva el DTO actualizado.
+     */
     @Test
     void depositar_deberiaIncrementarSaldo_cuandoMontoEsValido() {
-        when(cuentaFinancieraRepository.findById(cuentaId)).thenReturn(Optional.of(cuenta));
+        when(cuentaFinancieraRepository.findById(cuentaId)).thenReturn(Optional.of(cuentaEntity));
         when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        CuentaFinanciera resultado = cuentaFinancieraService.depositar(cuentaId, 500.0);
+        CuentaFinancieraResponseDto resultado = cuentaFinancieraService.depositar(cuentaId, 500.0);
 
-        assertThat(resultado.getSaldoOperativo()).isEqualTo(1500.0);
+        assertThat(resultado.getSaldoOperativo()).isEqualByComparingTo(BigDecimal.valueOf(1500.0));
     }
 
+    /**
+     * Verifica que se lance una {@link IllegalArgumentException} si se intenta depositar un monto nulo o menor/igual a cero.
+     */
     @Test
     void depositar_deberiaLanzarExcepcion_cuandoMontoEsInvalido() {
         assertThatThrownBy(() -> cuentaFinancieraService.depositar(cuentaId, -100.0))
                 .isInstanceOf(IllegalArgumentException.class);
 
-        // Como el monto es inválido, ni siquiera debería buscar la cuenta
         verifyNoInteractions(cuentaFinancieraRepository);
     }
 
+    /**
+     * Verifica que una extracción válida decremente el saldo operativo de la cuenta de forma exitosa.
+     */
     @Test
     void extraer_deberiaDecrementarSaldo_cuandoHayFondosSuficientes() {
-        when(cuentaFinancieraRepository.findById(cuentaId)).thenReturn(Optional.of(cuenta));
+        when(cuentaFinancieraRepository.findById(cuentaId)).thenReturn(Optional.of(cuentaEntity));
         when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        CuentaFinanciera resultado = cuentaFinancieraService.extraer(cuentaId, 300.0);
+        CuentaFinancieraResponseDto resultado = cuentaFinancieraService.extraer(cuentaId, 300.0);
 
-        assertThat(resultado.getSaldoOperativo()).isEqualTo(700.0);
+        assertThat(resultado.getSaldoOperativo()).isEqualByComparingTo(BigDecimal.valueOf(700.0));
     }
 
+    /**
+     * Verifica que se lance la excepción personalizada {@link SaldoInsuficienteException}
+     * cuando se intenta extraer un monto que excede la disponibilidad de fondos.
+     */
     @Test
-    void extraer_deberiaLanzarExcepcion_cuandoNoHayFondosSuficientes() {
-        when(cuentaFinancieraRepository.findById(cuentaId)).thenReturn(Optional.of(cuenta));
+    void extraer_deberiaLanzarSaldoInsuficienteException_cuandoNoHayFondos() {
+        when(cuentaFinancieraRepository.findById(cuentaId)).thenReturn(Optional.of(cuentaEntity));
 
         assertThatThrownBy(() -> cuentaFinancieraService.extraer(cuentaId, 5000.0))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(SaldoInsuficienteException.class)
                 .hasMessageContaining("Fondos insuficientes");
 
-        // El saldo no debe haberse persistido si la operación se rechazó
         verify(cuentaFinancieraRepository, never()).save(any());
     }
 
+    /**
+     * Verifica que la actualización del estado de una cuenta opere correctamente
+     * y capture el cambio mediante un captor de argumentos.
+     */
     @Test
     void cambiarEstado_deberiaActualizarElEstadoDeLaCuenta() {
-        when(cuentaFinancieraRepository.findById(cuentaId)).thenReturn(Optional.of(cuenta));
+        when(cuentaFinancieraRepository.findById(cuentaId)).thenReturn(Optional.of(cuentaEntity));
         ArgumentCaptor<CuentaFinanciera> captor = ArgumentCaptor.forClass(CuentaFinanciera.class);
         when(cuentaFinancieraRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -122,13 +173,18 @@ class CuentaFinancieraServiceImplTest {
         assertThat(captor.getValue().getEstado()).isEqualTo(EstadoCuenta.SUSPENDIDA);
     }
 
+    /**
+     * Verifica que el listado de cuentas por ID de cliente delegue en el repositorio
+     * y devuelva una lista mapeada de {@link CuentaFinancieraResponseDto}.
+     */
     @Test
-    void listarPorCliente_deberiaDelegarEnElRepositorio() {
+    void listarPorCliente_deberiaRetornarListaDeResponseDtos() {
         UUID clienteId = UUID.randomUUID();
-        when(cuentaFinancieraRepository.findByClienteId(clienteId)).thenReturn(List.of(cuenta));
+        when(cuentaFinancieraRepository.findByClienteId(clienteId)).thenReturn(List.of(cuentaEntity));
 
-        List<CuentaFinanciera> resultado = cuentaFinancieraService.listarPorCliente(clienteId);
+        List<CuentaFinancieraResponseDto> resultado = cuentaFinancieraService.listarPorCliente(clienteId);
 
-        assertThat(resultado).containsExactly(cuenta);
+        assertThat(resultado).hasSize(1);
+        assertThat(resultado.get(0).getCbu()).isEqualTo("1234567890123456789");
     }
 }

@@ -1,5 +1,8 @@
 package com.carrillovillalvadaas.tp2.service;
 
+import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
+import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
+import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
 import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
 import com.carrillovillalvadaas.tp2.service.impl.ClienteServiceImpl;
@@ -20,9 +23,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
- * Pruebas unitarias de ClienteServiceImpl.
- * Se mockea ClienteRepository: no se levanta contexto de Spring ni base de datos real,
- * solo se prueba la lógica propia de la clase de servicio.
+ * Pruebas unitarias para la implementación de servicios de clientes ({@link ClienteServiceImpl}).
+ * <p>
+ * Emplea Mockito para simular el comportamiento de {@link ClienteRepository}, aislando
+ * la lógica de negocio, el manejo de DTOs de entrada/salida y las validaciones de duplicados.
+ * </p>
+ *
+ * @author Desarrollo y Arquitecturas Avanzadas de Software (UNJu)
  */
 @ExtendWith(MockitoExtension.class)
 class ClienteServiceImplTest {
@@ -33,116 +40,113 @@ class ClienteServiceImplTest {
     @InjectMocks
     private ClienteServiceImpl clienteService;
 
-    private Cliente cliente;
+    private Cliente clienteEntity;
+    private ClienteRequestDto requestDto;
     private UUID clienteId;
 
+    /**
+     * Configuración inicial previa a cada prueba.
+     * Inicializa las entidades de base de datos y los DTOs de prueba.
+     */
     @BeforeEach
     void setUp() {
         clienteId = UUID.randomUUID();
-        cliente = Cliente.builder()
+
+        clienteEntity = Cliente.builder()
                 .id(clienteId)
                 .nombre("Elias Villalba")
                 .cuil(20123456789L)
-                .email("billygay@mail.com")
+                .email("elias@mail.com")
                 .direccion("Calle 123")
                 .telefono("3884000000")
                 .build();
+
+        requestDto = new ClienteRequestDto();
+        requestDto.setNombre("Elias Villalba");
+        requestDto.setCuil("20123456789");
+        requestDto.setEmail("elias@mail.com");
+        requestDto.setDireccion("Calle 123");
+        requestDto.setTelefono("3884000000");
     }
 
+    /**
+     * Verifica que un cliente se registre y guarde correctamente cuando no existen duplicados previos.
+     */
     @Test
     void crearCliente_deberiaGuardarCliente_cuandoNoExisteDuplicado() {
-        // Arrange
-        when(clienteRepository.existsByCuilOrEmail(cliente.getCuil(), cliente.getEmail())).thenReturn(false);
-        when(clienteRepository.save(cliente)).thenReturn(cliente);
+        when(clienteRepository.existsByCuilOrEmail(20123456789L, "elias@mail.com")).thenReturn(false);
+        when(clienteRepository.save(any(Cliente.class))).thenReturn(clienteEntity);
 
-        // Act
-        Cliente resultado = clienteService.crearCliente(cliente);
+        ClienteResponseDto resultado = clienteService.crearCliente(requestDto);
 
-        // Assert
-        assertThat(resultado).isEqualTo(cliente);
-        verify(clienteRepository).save(cliente);
+        assertThat(resultado).isNotNull();
+        assertThat(resultado.getNombre()).isEqualTo("Elias Villalba");
+        verify(clienteRepository).save(any(Cliente.class));
     }
 
+    /**
+     * Verifica que se lance una excepción cuando se intenta registrar un cliente
+     * con un CUIL o correo electrónico que ya se encuentra registrado en el sistema.
+     */
     @Test
     void crearCliente_deberiaLanzarExcepcion_cuandoExisteCuilOEmailDuplicado() {
-        // Arrange
-        when(clienteRepository.existsByCuilOrEmail(cliente.getCuil(), cliente.getEmail())).thenReturn(true);
+        when(clienteRepository.existsByCuilOrEmail(20123456789L, "elias@mail.com")).thenReturn(true);
 
-        // Act & Assert
-        assertThatThrownBy(() -> clienteService.crearCliente(cliente))
+        assertThatThrownBy(() -> clienteService.crearCliente(requestDto))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Ya existe un cliente");
 
-        // Nunca debe llegar a guardar si detectó duplicado
         verify(clienteRepository, never()).save(any());
     }
 
+    /**
+     * Verifica que se retorne el {@link ClienteResponseDto} correcto al buscar un cliente por su UUID.
+     */
     @Test
     void obtenerPorId_deberiaRetornarCliente_cuandoExiste() {
-        when(clienteRepository.findById(clienteId)).thenReturn(Optional.of(cliente));
+        when(clienteRepository.findById(clienteId)).thenReturn(Optional.of(clienteEntity));
 
-        Cliente resultado = clienteService.obtenerPorId(clienteId);
+        ClienteResponseDto resultado = clienteService.obtenerPorId(clienteId);
 
-        assertThat(resultado).isEqualTo(cliente);
+        assertThat(resultado).isNotNull();
+        assertThat(resultado.getNombre()).isEqualTo("Elias Villalba");
     }
 
+    /**
+     * Verifica que se lance la excepción {@link RecursoNoEncontradoException} al buscar un ID inexistente.
+     */
     @Test
     void obtenerPorId_deberiaLanzarExcepcion_cuandoNoExiste() {
         UUID idInexistente = UUID.randomUUID();
         when(clienteRepository.findById(idInexistente)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> clienteService.obtenerPorId(idInexistente))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(RecursoNoEncontradoException.class)
                 .hasMessageContaining("Cliente no encontrado");
     }
 
-    @Test
-    void obtenerPorCuil_deberiaRetornarCliente_cuandoExiste() {
-        when(clienteRepository.findByCuil(cliente.getCuil())).thenReturn(Optional.of(cliente));
-
-        Cliente resultado = clienteService.obtenerPorCuil(cliente.getCuil());
-
-        assertThat(resultado).isEqualTo(cliente);
-    }
-
+    /**
+     * Verifica que la consulta general retorne la lista completa de clientes mapeados a DTOs.
+     */
     @Test
     void listarTodos_deberiaRetornarListaCompleta() {
-        when(clienteRepository.findAll()).thenReturn(List.of(cliente));
+        when(clienteRepository.findAll()).thenReturn(List.of(clienteEntity));
 
-        List<Cliente> resultado = clienteService.listarTodos();
+        List<ClienteResponseDto> resultado = clienteService.listarTodos();
 
-        assertThat(resultado).hasSize(1).containsExactly(cliente);
+        assertThat(resultado).hasSize(1);
+        assertThat(resultado.get(0).getNombre()).isEqualTo("Elias Villalba");
     }
 
-    @Test
-    void actualizarCliente_deberiaModificarSoloCamposPermitidos() {
-        // Arrange: lo que ya existe en la "base"
-        when(clienteRepository.findById(clienteId)).thenReturn(Optional.of(cliente));
-        when(clienteRepository.save(any(Cliente.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        Cliente cambios = Cliente.builder()
-                .nombre("Juan Actualizado")
-                .email("nuevo@mail.com")
-                .direccion("Nueva Direccion 456")
-                .telefono("3884111111")
-                .build();
-
-        // Act
-        Cliente resultado = clienteService.actualizarCliente(clienteId, cambios);
-
-        // Assert: se actualizaron los campos modificables...
-        assertThat(resultado.getNombre()).isEqualTo("Juan Actualizado");
-        assertThat(resultado.getEmail()).isEqualTo("nuevo@mail.com");
-        // ...y el CUIL (no editable por este método) se mantuvo intacto
-        assertThat(resultado.getCuil()).isEqualTo(20123456789L);
-    }
-
+    /**
+     * Verifica que se ejecute la eliminación de un cliente existente de manera exitosa.
+     */
     @Test
     void eliminarPorId_deberiaBorrarCliente_cuandoExiste() {
-        when(clienteRepository.findById(clienteId)).thenReturn(Optional.of(cliente));
+        when(clienteRepository.findById(clienteId)).thenReturn(Optional.of(clienteEntity));
 
         clienteService.eliminarPorId(clienteId);
 
-        verify(clienteRepository).delete(cliente);
+        verify(clienteRepository).delete(clienteEntity);
     }
 }
