@@ -6,6 +6,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * Objeto de transferencia de datos (DTO) para la solicitud de apertura o creación
@@ -48,7 +49,7 @@ public class CuentaFinancieraRequestDto {
      * Identificador único del cliente titular que poseerá la cuenta.
      */
     @NotNull(message = "El ID del cliente titular es obligatorio.")
-    private Long clienteId;
+    private UUID clienteId;
 
     // --- Atributos específicos según el tipo de cuenta (TP2) ---
 

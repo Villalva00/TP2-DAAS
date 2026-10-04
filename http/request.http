@@ -1,0 +1,40 @@
+### 1. Crear cuenta con cliente existente (debe dar 201)
+POST http://localhost:8080/api/v1/cuentas
+Content-Type: application/json
+
+{
+  "cbu": "31000000000098",
+  "alias": "TEST.CUENTA.DOS",
+  "saldoOperativo": 1000,
+  "tipoCuenta": "CAJA_AHORRO",
+  "clienteId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+  "tasaInteresAnual": 40.0,
+  "cupoExtraccionesSinCosto": 5
+}
+
+### 2. Verificar que quedó asociada al cliente (debe aparecer TEST.CUENTA.UNO)
+GET http://localhost:8080/api/v1/cuentas/cliente/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+
+### 3. Cliente inexistente (debe dar 404)
+POST http://localhost:8080/api/v1/cuentas
+Content-Type: application/json
+
+{
+  "cbu": "31000000000098",
+  "alias": "TEST.CUENTA.DOS",
+  "saldoOperativo": 1000,
+  "tipoCuenta": "CAJA_AHORRO",
+  "clienteId": "00000000-0000-0000-0000-000000000000"
+}
+
+### 4. IllegalArgumentException: tipo de cuenta inválido (debe dar 400)
+POST http://localhost:8080/api/v1/cuentas
+Content-Type: application/json
+
+{
+  "cbu": "31000000000097",
+  "alias": "TEST.CUENTA.TRES",
+  "saldoOperativo": 1000,
+  "tipoCuenta": "XYZ",
+  "clienteId": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+}

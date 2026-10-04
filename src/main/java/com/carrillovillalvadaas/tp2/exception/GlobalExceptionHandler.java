@@ -82,4 +82,18 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
+    /**
+     * Intercepta {@link IllegalArgumentException} (monto inválido, tipo de cuenta inválido,
+     * cliente duplicado, formato numérico inválido) y la traduce a HTTP 400.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("timestamp", LocalDateTime.now());
+        errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
+        errorResponse.put("error", "Solicitud inválida");
+        errorResponse.put("message", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
 }

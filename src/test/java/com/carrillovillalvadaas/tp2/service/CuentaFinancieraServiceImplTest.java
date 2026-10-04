@@ -7,7 +7,9 @@ import com.carrillovillalvadaas.tp2.exception.SaldoInsuficienteException;
 import com.carrillovillalvadaas.tp2.model.CajaAhorro;
 import com.carrillovillalvadaas.tp2.model.CuentaFinanciera;
 import com.carrillovillalvadaas.tp2.model.EstadoCuenta;
+import com.carrillovillalvadaas.tp2.model.Cliente;
 import com.carrillovillalvadaas.tp2.repository.CuentaFinancieraRepository;
+import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
 import com.carrillovillalvadaas.tp2.service.impl.CuentaFinancieraServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,8 @@ class CuentaFinancieraServiceImplTest {
 
     @Mock
     private CuentaFinancieraRepository cuentaFinancieraRepository;
+    @Mock
+    private ClienteRepository clienteRepository;
 
     @InjectMocks
     private CuentaFinancieraServiceImpl cuentaFinancieraService;
@@ -50,6 +54,7 @@ class CuentaFinancieraServiceImplTest {
     private UUID cuentaId;
     private CuentaFinancieraRequestDto requestDto;
 
+    private UUID clienteId;
     /**
      * Configuración inicial previa a la ejecución de cada prueba unitaria.
      * Inicializa una entidad de tipo {@link CajaAhorro} de prueba y un {@link CuentaFinancieraRequestDto}.
@@ -57,6 +62,7 @@ class CuentaFinancieraServiceImplTest {
     @BeforeEach
     void setUp() {
         cuentaId = UUID.randomUUID();
+        clienteId = UUID.randomUUID();
 
         cuentaEntity = new CajaAhorro();
         cuentaEntity.setId(cuentaId);
@@ -73,6 +79,7 @@ class CuentaFinancieraServiceImplTest {
         requestDto.setSaldoOperativo(BigDecimal.valueOf(1000.0));
         requestDto.setTipoCuenta("CAJA_AHORRO");
         requestDto.setTasaInteresAnual(50.0);
+        requestDto.setClienteId(clienteId);
     }
 
     /**
@@ -81,8 +88,10 @@ class CuentaFinancieraServiceImplTest {
      */
     @Test
     void crearCuenta_deberiaGuardarYRetornarResponseDto() {
-        when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class))).thenReturn(cuentaEntity);
-
+        Cliente cliente = Cliente.builder().id(clienteId).build();
+        when(clienteRepository.findById(clienteId)).thenReturn(Optional.of(cliente));
+        when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class)))
+                .thenReturn(cuentaEntity);
         CuentaFinancieraResponseDto resultado = cuentaFinancieraService.crearCuenta(requestDto);
 
         assertThat(resultado).isNotNull();
@@ -179,12 +188,22 @@ class CuentaFinancieraServiceImplTest {
      */
     @Test
     void listarPorCliente_deberiaRetornarListaDeResponseDtos() {
-        UUID clienteId = UUID.randomUUID();
+
         when(cuentaFinancieraRepository.findByClienteId(clienteId)).thenReturn(List.of(cuentaEntity));
 
         List<CuentaFinancieraResponseDto> resultado = cuentaFinancieraService.listarPorCliente(clienteId);
 
         assertThat(resultado).hasSize(1);
         assertThat(resultado.get(0).getCbu()).isEqualTo("1234567890123456789");
+    }
+    @Test
+    void crearCuenta_deberiaLanzarRecursoNoEncontrado_cuandoClienteNoExiste() {
+        when(clienteRepository.findById(clienteId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> cuentaFinancieraService.crearCuenta(requestDto))
+                .isInstanceOf(RecursoNoEncontradoException.class)
+                .hasMessageContaining("Cliente no encontrado");
+
+        verify(cuentaFinancieraRepository, never()).save(any());
     }
 }
