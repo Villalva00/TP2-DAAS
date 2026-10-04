@@ -55,5 +55,13 @@ public interface ClienteRepository extends JpaRepository<Cliente, UUID> {
      * @return Una {@link List} de clientes que coinciden con el filtro de búsqueda.
      */
     List<Cliente> findByNombreContainingIgnoreCase(String nombre);
+
+
+    /*
+    *Recupera los clientes adherentes vinculados a su titular.
+    * @param titularId Identificador del cliente titular
+    * @return lista de adherentes del titular (vacia si no tiene).
+     */
+    List<Cliente> findByClientePrincipalId(UUID titularId);
 }
 
