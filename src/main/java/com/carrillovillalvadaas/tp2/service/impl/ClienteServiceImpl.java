@@ -159,6 +159,8 @@ public class ClienteServiceImpl implements ClienteService {
                 .nombre(cliente.getNombre())
                 .cuil(String.valueOf(cliente.getCuil()))
                 .email(cliente.getEmail())
+                .tipoCliente(cliente.getTipoCliente() != null ? cliente.getTipoCliente().name() : null)
+                .parentesco(cliente.getParentesco()!=null?cliente.getParentesco().name() :null)
                 .build();
     }
 }

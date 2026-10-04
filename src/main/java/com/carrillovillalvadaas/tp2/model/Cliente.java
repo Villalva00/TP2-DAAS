@@ -25,7 +25,7 @@ import java.util.UUID;
 /**
  * //Define explícitamente el nombre que tendrá la tabla en la base de datos (cliente).
 */
-@Table(name="cliente ")
+@Table(name="cliente")
 @Getter
 @Setter
 
@@ -49,8 +49,6 @@ public class Cliente extends EntidadAuditable {
      */
     @Column(name="nombre", nullable = false, length = 100)
     private String nombre;
-
-
 
     /**
      * Razón social del cliente, aplicable en caso de personas jurídicas.
@@ -86,6 +84,21 @@ public class Cliente extends EntidadAuditable {
     @Column(length = 30)
     private String telefono;
 
+    /*
+     * Rol del cliente en el grupo titular. Por defecto es TITULAR.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name="tipo_cliente",nullable = false, length=20)
+    @Builder.Default
+    private TipoCliente tipoCliente= TipoCliente.TITULAR;
+
+    /*
+     * Parentesco respecto del titular. Solo aplica a adherentes: es null para titulares
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name="parentesco", length=20)
+    private Parentesco parentesco;
+
     /**
      *  Relación reflexiva de 1 a muchos entre clientes
      * @ManyToOne Define que muchos clientes secundarios pueden estar asociados a un único clientePrincipal
@@ -112,9 +125,15 @@ public class Cliente extends EntidadAuditable {
      *
      *  @Builder.Default y = new ArrayList<>(), sirve para asegurar que la lista de cuentas siempre esté creada y vacía en lugar de ser nula, evitando errores de tipo NullPointerException cuando se intenta agregarle una cuenta por primera vez.
      */
-    @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true, fetch =   FetchType.LAZY)
+
+    @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
     private List<CuentaFinanciera> cuentas = new ArrayList<>();
 
+    //Va sin CASCADE porque si se borra un titular no se debe borrar a sus adherentes.
+    // Adherentes: el atributo "clientePrincipal" existe en Cliente
+    @OneToMany(mappedBy = "clientePrincipal", fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<Cliente> adherentes = new ArrayList<>();
 
 }

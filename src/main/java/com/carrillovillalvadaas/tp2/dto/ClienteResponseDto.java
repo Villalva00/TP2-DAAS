@@ -45,4 +45,13 @@ public class ClienteResponseDto {
      * Marca temporal de auditoria qeu indica la ultima actualizacion.
      */
     private LocalDateTime ultimaModificacion;
+
+    /*
+    *Rol del cliente en el grupo familiar (TITULAR O ADHERENTE)
+     */
+    private String tipoCliente;
+    /*
+    * Parentesco con el titular (CONYUGE O HIJO). Null si es titular.
+     */
+    private String parentesco;
 }
