@@ -25,9 +25,7 @@ import java.util.UUID;
 /**
  * //Define explícitamente el nombre que tendrá la tabla en la base de datos (cliente).
 */
-@Table(name = "cliente ")
-
-
+@Table(name="cliente ")
 @Getter
 @Setter
 

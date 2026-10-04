@@ -4,10 +4,8 @@ import com.carrillovillalvadaas.tp2.dto.CuentaFinancieraRequestDto;
 import com.carrillovillalvadaas.tp2.dto.CuentaFinancieraResponseDto;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.exception.SaldoInsuficienteException;
-import com.carrillovillalvadaas.tp2.model.CajaAhorro;
-import com.carrillovillalvadaas.tp2.model.CuentaCorriente;
-import com.carrillovillalvadaas.tp2.model.CuentaFinanciera;
-import com.carrillovillalvadaas.tp2.model.EstadoCuenta;
+import com.carrillovillalvadaas.tp2.model.*;
+import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
 import com.carrillovillalvadaas.tp2.repository.CuentaFinancieraRepository;
 import com.carrillovillalvadaas.tp2.service.CuentaFinancieraService;
 import lombok.RequiredArgsConstructor;
@@ -31,9 +29,8 @@ import java.util.stream.Collectors;
 @Slf4j
 @RequiredArgsConstructor
 public class CuentaFinancieraServiceImpl implements CuentaFinancieraService {
-
     private final CuentaFinancieraRepository cuentaFinancieraRepository;
-
+    private final ClienteRepository clienteRepository;
     @Override
     @Transactional
     public CuentaFinancieraResponseDto crearCuenta(CuentaFinancieraRequestDto requestDto) {
@@ -70,6 +67,10 @@ public class CuentaFinancieraServiceImpl implements CuentaFinancieraService {
         cuentaEntity.setAlias(requestDto.getAlias());
         cuentaEntity.setSaldoOperativo(requestDto.getSaldoOperativo().doubleValue());
         cuentaEntity.setEstado(EstadoCuenta.ACTIVA);
+        Cliente titular = clienteRepository.findById(requestDto.getClienteId())
+                .orElseThrow(()-> new RecursoNoEncontradoException(
+                        "Cliente no encontrado con el ID: " + requestDto.getClienteId()));
+        cuentaEntity.setCliente(titular);
 
         CuentaFinanciera cuentaGuardada = cuentaFinancieraRepository.save(cuentaEntity);
         log.info("Cuenta financiera creada con ID: {}", cuentaGuardada.getId());
