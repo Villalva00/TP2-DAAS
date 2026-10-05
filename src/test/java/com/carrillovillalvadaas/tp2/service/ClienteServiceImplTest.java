@@ -1,9 +1,12 @@
 package com.carrillovillalvadaas.tp2.service;
 
+import com.carrillovillalvadaas.tp2.dto.AdherenteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
+import com.carrillovillalvadaas.tp2.model.Parentesco;
+import com.carrillovillalvadaas.tp2.model.TipoCliente;
 import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
 import com.carrillovillalvadaas.tp2.service.impl.ClienteServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
@@ -148,5 +151,50 @@ class ClienteServiceImplTest {
         clienteService.eliminarPorId(clienteId);
 
         verify(clienteRepository).delete(clienteEntity);
+    }
+    @Test
+    void crearAdherente_deberiaVincularAlTitular() {
+        AdherenteRequestDto dto = AdherenteRequestDto.builder()
+                .nombre("Laura Ruiz").cuil("27345556667").email("laura@mail.com")
+                .telefono("3881112233").direccion("Calle 123").parentesco(Parentesco.CONYUGE)
+                .build();
+
+        when(clienteRepository.findById(clienteId)).thenReturn(Optional.of(clienteEntity));
+        when(clienteRepository.existsByCuilOrEmail(27345556667L, "laura@mail.com")).thenReturn(false);
+        when(clienteRepository.save(any(Cliente.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ClienteResponseDto resultado = clienteService.crearAdherente(clienteId, dto);
+
+        assertThat(resultado.getTipoCliente()).isEqualTo("ADHERENTE");
+        assertThat(resultado.getParentesco()).isEqualTo("CONYUGE");
+    }
+
+    @Test
+    void crearAdherente_deberiaLanzarExcepcion_cuandoElTitularEsAdherente() {
+        clienteEntity.setTipoCliente(TipoCliente.ADHERENTE);
+        AdherenteRequestDto dto = AdherenteRequestDto.builder()
+                .nombre("X").cuil("27345556667").email("x@mail.com")
+                .telefono("1").direccion("d").parentesco(Parentesco.HIJO).build();
+
+        when(clienteRepository.findById(clienteId)).thenReturn(Optional.of(clienteEntity));
+
+        assertThatThrownBy(() -> clienteService.crearAdherente(clienteId, dto))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Un adherente no puede tener adherentes");
+
+        verify(clienteRepository, never()).save(any());
+    }
+
+    @Test
+    void crearAdherente_deberiaLanzar404_cuandoTitularNoExiste() {
+        UUID inexistente = UUID.randomUUID();
+        AdherenteRequestDto dto = AdherenteRequestDto.builder()
+                .nombre("X").cuil("27345556667").email("x@mail.com")
+                .telefono("1").direccion("d").parentesco(Parentesco.HIJO).build();
+
+        when(clienteRepository.findById(inexistente)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> clienteService.crearAdherente(inexistente, dto))
+                .isInstanceOf(RecursoNoEncontradoException.class);
     }
 }

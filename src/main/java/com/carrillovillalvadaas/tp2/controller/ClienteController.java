@@ -3,6 +3,7 @@ package com.carrillovillalvadaas.tp2.controller;
 import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
 import com.carrillovillalvadaas.tp2.service.ClienteService;
+import com.carrillovillalvadaas.tp2.dto.AdherenteRequestDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -136,4 +137,32 @@ public class ClienteController {
         log.info("Cliente con ID {} eliminado correctamente", id);
         return ResponseEntity.noContent().build();
     }
+    /**
+     * Registra un adherente (cónyuge o hijo) asociado a un titular.
+     *
+     * @param titularId  UUID del titular.
+     * @param requestDto Datos validados del adherente.
+     * @return El adherente creado con HTTP 201 (Created).
+     */
+    @PostMapping("{titularId}/adherentes")
+    public ResponseEntity<ClienteResponseDto> crearAdherente(
+        @PathVariable UUID titularId,
+        @Valid @RequestBody AdherenteRequestDto requestDto){
+        log.info("Recibida solicitud HTTP POST en /api/v1/clientes/{}/adherentes", titularId);
+        ClienteResponseDto adherente = clienteService.crearAdherente(titularId, requestDto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(adherente);
+    }
+
+    /**
+     * Lista los adherentes de un titular.
+     *
+     * @param titularId UUID del titular.
+     * @return Lista de adherentes con HTTP 200 (OK).
+     */
+    @GetMapping("/{titularId}/adherentes")
+    public ResponseEntity<List<ClienteResponseDto>> listarAdherentes(@PathVariable UUID titularId) {
+        log.info("Recibida solicitud HTTP GET en /api/v1/clientes/{}/adherentes", titularId);
+        return ResponseEntity.ok(clienteService.listarAdherentes(titularId));
+    }
+
 }

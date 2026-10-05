@@ -1,9 +1,11 @@
 package com.carrillovillalvadaas.tp2.service.impl;
 
+import com.carrillovillalvadaas.tp2.dto.AdherenteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
+import com.carrillovillalvadaas.tp2.model.TipoCliente;
 import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
 import com.carrillovillalvadaas.tp2.service.ClienteService;
 import org.springframework.stereotype.Service;
@@ -146,6 +148,52 @@ public class ClienteServiceImpl implements ClienteService {
         log.info("Cliente con ID {} eliminado correctamente", id);
     }
 
+    @Override
+    @Transactional
+    public ClienteResponseDto crearAdherente(UUID titularId, AdherenteRequestDto dto){
+        log.info("Creando adherente {} para el titular {}", dto.getParentesco(), titularId);
+
+        Cliente titular = clienteRepository.findById(titularId)
+                .orElseThrow(()-> new RecursoNoEncontradoException("Titular no Encontrado con el ID: " +titularId));
+        //valido que sea titular
+        if(titular.getTipoCliente() != TipoCliente.TITULAR){
+            throw new IllegalArgumentException("Un adherente no puede tener adherentes.");
+        }
+        long cuilLong= Long.parseLong(dto.getCuil());
+        if(clienteRepository.existsByCuilOrEmail(cuilLong,dto.getEmail())){
+            throw new IllegalArgumentException("Ya existe un cliente registrado con el mismo cuil o email.");
+        }
+        Cliente adherente = Cliente.builder()
+                .nombre(dto.getNombre())
+                .cuil(cuilLong)
+                .email(dto.getEmail())
+                .telefono(dto.getTelefono())
+                .direccion(dto.getDireccion())
+                .tipoCliente(TipoCliente.ADHERENTE)
+                .clientePrincipal(titular)
+                .parentesco(dto.getParentesco())
+                .build();
+        // TODO (TP5-B #7): asignar estado inicial PENDIENTE_ACTIVACION y generar TokenActivacion.
+        // TODO (TP5-B #8): publicar el evento de dominio asíncrono para enviar el email de activación.
+        Cliente guardado = clienteRepository.save(adherente);
+        log.info("Adherente registrado con ID: {}", guardado.getId());
+
+        return mapearAResponseDto(guardado);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ClienteResponseDto> listarAdherentes(UUID titularId) {
+        log.debug("Listando adherentes del titular {}", titularId);
+
+        if (!clienteRepository.existsById(titularId)) {
+            throw new RecursoNoEncontradoException("Titular no encontrado con el ID: " + titularId);
+        }
+
+        return clienteRepository.findByClientePrincipalId(titularId).stream()
+                .map(this::mapearAResponseDto)
+                .collect(Collectors.toList());
+    }
     /**
      * Método auxiliar privado para centralizar y encapsular el mapeo
      * de la Entidad de persistencia {@link Cliente} hacia el {@link ClienteResponseDto}.

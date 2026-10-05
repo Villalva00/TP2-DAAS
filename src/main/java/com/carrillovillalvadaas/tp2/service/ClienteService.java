@@ -1,5 +1,6 @@
 package com.carrillovillalvadaas.tp2.service;
 
+import com.carrillovillalvadaas.tp2.dto.AdherenteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
 
@@ -70,4 +71,25 @@ public interface ClienteService {
      * @throws com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException si el cliente a eliminar no es encontrado.
      */
     void eliminarPorId(UUID id);
+
+
+    /**
+            * Registra un adherente (cónyuge o hijo) vinculado a un titular.
+            *
+            * @param titularId Identificador del cliente titular.
+            * @param dto Datos del adherente.
+            * @return El adherente creado.
+            * @throws com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException si el titular no existe.
+            * @throws IllegalArgumentException si el cliente indicado es un adherente, o si ya existe un cliente con el mismo CUIL o email.
+ */
+    ClienteResponseDto crearAdherente(UUID titularId, AdherenteRequestDto dto);
+
+    /**
+     * Lista los adherentes vinculados a un titular.
+     *
+     * @param titularId Identificador del titular.
+     * @return Lista de adherentes (vacía si no tiene).
+     * @throws com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException si el titular no existe.
+     */
+    List<ClienteResponseDto> listarAdherentes(UUID titularId);
 }

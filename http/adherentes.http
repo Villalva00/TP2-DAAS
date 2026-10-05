@@ -1,0 +1,136 @@
+### ============================================================
+### Issue #3 - Alta y listado de adherentes
+### Ejecutar con el botón verde (▶) a la izquierda de cada request
+### ============================================================
+
+@host = http://localhost:8080
+@titularId = a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+@adherenteId = e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55
+
+### 1. Crear adherente de un titular -> 201
+### (si lo ejecutás dos veces da 400 por CUIL/email duplicado: cambiá cuil y email)
+POST {{host}}/api/v1/clientes/{{titularId}}/adherentes
+Content-Type: application/json
+
+{
+  "nombre": "Sofía Pérez",
+  "cuil": "27456667779",
+  "email": "sofia.perez@email.com",
+  "telefono": "3885556677",
+  "direccion": "Av. Principal 123",
+  "parentesco": "HIJO"
+}
+
+> {%
+    client.test("Adherente creado (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+        client.assert(response.body.tipoCliente === "ADHERENTE", "tipoCliente debe ser ADHERENTE");
+    });
+%}
+
+### 2. Listar adherentes del titular -> 200 (Laura, Tomás y Sofía)
+GET {{host}}/api/v1/clientes/{{titularId}}/adherentes
+
+> {%
+    client.test("Lista de adherentes (200)", function () {
+        client.assert(response.status === 200, "Se esperaba 200 y llegó " + response.status);
+    });
+%}
+
+### 3. Adherente de un adherente -> 400 "Un adherente no puede tener adherentes"
+POST {{host}}/api/v1/clientes/{{adherenteId}}/adherentes
+Content-Type: application/json
+
+{
+  "nombre": "Test Adherente",
+  "cuil": "20111111112",
+  "email": "test.adherente@email.com",
+  "telefono": "3880000000",
+  "direccion": "Calle X",
+  "parentesco": "HIJO"
+}
+
+> {%
+    client.test("Adherente de adherente rechazado (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+    });
+%}
+
+### 4. Titular inexistente -> 404
+POST {{host}}/api/v1/clientes/00000000-0000-0000-0000-000000000000/adherentes
+Content-Type: application/json
+
+{
+  "nombre": "Test Adherente",
+  "cuil": "20111111112",
+  "email": "test.adherente@email.com",
+  "telefono": "3880000000",
+  "direccion": "Calle X",
+  "parentesco": "HIJO"
+}
+
+> {%
+    client.test("Titular inexistente (404)", function () {
+        client.assert(response.status === 404, "Se esperaba 404 y llegó " + response.status);
+    });
+%}
+
+### 5. Listar adherentes de un titular inexistente -> 404
+GET {{host}}/api/v1/clientes/00000000-0000-0000-0000-000000000000/adherentes
+
+> {%
+    client.test("Listado con titular inexistente (404)", function () {
+        client.assert(response.status === 404, "Se esperaba 404 y llegó " + response.status);
+    });
+%}
+
+### 6. CUIL/email duplicado -> 400 (usa datos de Laura, ya cargada en data.sql)
+POST {{host}}/api/v1/clientes/{{titularId}}/adherentes
+Content-Type: application/json
+
+{
+  "nombre": "Duplicada",
+  "cuil": "27345556667",
+  "email": "laura.ruiz@email.com",
+  "telefono": "3880000000",
+  "direccion": "Calle X",
+  "parentesco": "CONYUGE"
+}
+
+> {%
+    client.test("Duplicado rechazado (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+    });
+%}
+
+### 7. Validación: faltan campos -> 400 con detalle por campo
+POST {{host}}/api/v1/clientes/{{titularId}}/adherentes
+Content-Type: application/json
+
+{
+  "nombre": "",
+  "cuil": "123",
+  "email": "no-es-un-email"
+}
+
+> {%
+    client.test("Validación de campos (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+    });
+%}
+
+### 8. (Opcional) Parentesco inválido -> 400 (formato por defecto de Spring)
+POST {{host}}/api/v1/clientes/{{titularId}}/adherentes
+Content-Type: application/json
+
+{
+  "nombre": "Test Primo",
+  "cuil": "20222222223",
+  "email": "primo@email.com",
+  "telefono": "3880000000",
+  "direccion": "Calle X",
+  "parentesco": "PRIMO"
+}
+
+### 9. Ver todos los clientes -> 200 (con tipoCliente y parentesco)
+GET {{host}}/api/v1/clientes
