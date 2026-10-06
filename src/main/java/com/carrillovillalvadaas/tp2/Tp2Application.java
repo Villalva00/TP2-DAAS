@@ -3,7 +3,7 @@ package com.carrillovillalvadaas.tp2;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
-
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 /**
  * Clase principal que actúa como punto de entrada de la aplicación Spring Boot
  * para el sistema bancario.
@@ -13,6 +13,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
  */
 @SpringBootApplication
 @EnableJpaAuditing
+//esta anotacion scanea el paquete tp2Aplicationy sus subpaquetes, asi enuentra el record en config y lo registra como been
+@ConfigurationPropertiesScan
 public class Tp2Application {
 
     /**
