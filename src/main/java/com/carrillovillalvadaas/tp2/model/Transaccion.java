@@ -82,4 +82,12 @@ public class Transaccion extends EntidadAuditable {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cuenta_financiera_id", nullable = false)
     private CuentaFinanciera cuentaFinanciera;
+
+    /**
+     * Cliente que ejecutó la operación (titular de la cuenta o un adherente suyo).
+     * Es nullable para no romper las transacciones previas a este cambio.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name="ejecutor_id")
+    private Cliente ejecutor;
 }

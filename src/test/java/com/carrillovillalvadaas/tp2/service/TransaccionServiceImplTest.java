@@ -2,15 +2,18 @@ package com.carrillovillalvadaas.tp2.service;
 
 import com.carrillovillalvadaas.tp2.dto.TransaccionRequestDto;
 import com.carrillovillalvadaas.tp2.dto.TransaccionResponseDto;
+import com.carrillovillalvadaas.tp2.exception.OperacionNoPermitidaException;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.exception.SaldoInsuficienteException;
 import com.carrillovillalvadaas.tp2.model.*;
+import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
 import com.carrillovillalvadaas.tp2.repository.CuentaFinancieraRepository;
 import com.carrillovillalvadaas.tp2.repository.TransaccionRepository;
 import com.carrillovillalvadaas.tp2.service.impl.TransaccionServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -53,6 +56,11 @@ class TransaccionServiceImplTest {
     private UUID cuentaId;
     private TransaccionRequestDto requestDto;
 
+    @Mock
+    private ClienteRepository clienteRepository;
+
+    private Cliente titular;
+    private Cliente adherente;
     /**
      * Configuración inicial previa a cada prueba unitaria.
      * Inicializa una cuenta de prueba y un DTO de solicitud estándar.
@@ -65,7 +73,13 @@ class TransaccionServiceImplTest {
         cuenta.setCbu(1234567890123456789L);
         cuenta.setSaldoOperativo(1000.0);
         cuenta.setEstado(EstadoCuenta.ACTIVA);
-
+        titular = Cliente.builder().id(UUID.randomUUID()).nombre("Titular").build();
+        adherente = Cliente.builder().id(UUID.randomUUID()).nombre("Adherente")
+                .tipoCliente(TipoCliente.ADHERENTE)
+                .clientePrincipal(titular)
+                .parentesco(Parentesco.HIJO)
+                .build();
+        cuenta.setCliente(titular);
         requestDto = new TransaccionRequestDto();
         requestDto.setCbuCuenta("1234567890123456789");
         requestDto.setMonto(BigDecimal.valueOf(200.0));
@@ -186,5 +200,83 @@ class TransaccionServiceImplTest {
 
         assertThat(resultado).isNotNull();
         verify(transaccionRepository).findByCuentaFinancieraId(cuentaId);
+    }
+    @Test
+    void registrarDeposito_deberiaRechazar_cuandoElEjecutorEsAdherente() {
+        requestDto.setClienteEjecutorId(adherente.getId());
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(clienteRepository.findById(adherente.getId())).thenReturn(Optional.of(adherente));
+
+        assertThatThrownBy(() -> transaccionService.registrarDeposito(requestDto))
+                .isInstanceOf(OperacionNoPermitidaException.class)
+                .hasMessageContaining("solo pueden realizar extracciones");
+
+        assertThat(cuenta.getSaldoOperativo()).isEqualTo(1000.0);
+        verify(transaccionRepository, never()).save(any());
+    }
+
+    @Test
+    void registrarExtraccion_deberiaGuardarElEjecutor_cuandoEsAdherenteDelTitular() {
+        requestDto.setMonto(BigDecimal.valueOf(300.0));
+        requestDto.setTipoTransaccion("EXTRACCION");
+        requestDto.setClienteEjecutorId(adherente.getId());
+
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(clienteRepository.findById(adherente.getId())).thenReturn(Optional.of(adherente));
+        when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class))).thenAnswer(inv -> inv.getArgument(0));
+        ArgumentCaptor<Transaccion> captor = ArgumentCaptor.forClass(Transaccion.class);
+        when(transaccionRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+        transaccionService.registrarExtraccion(requestDto);
+
+        assertThat(captor.getValue().getEjecutor()).isSameAs(adherente);
+        assertThat(cuenta.getSaldoOperativo()).isEqualTo(700.0);
+    }
+
+    @Test
+    void registrarExtraccion_deberiaRechazar_cuandoElAdherenteEsDeOtroTitular() {
+        Cliente otroTitular = Cliente.builder().id(UUID.randomUUID()).nombre("Otro").build();
+        Cliente adherenteAjeno = Cliente.builder().id(UUID.randomUUID()).nombre("Ajeno")
+                .tipoCliente(TipoCliente.ADHERENTE)
+                .clientePrincipal(otroTitular)
+                .parentesco(Parentesco.CONYUGE)
+                .build();
+        requestDto.setTipoTransaccion("EXTRACCION");
+        requestDto.setClienteEjecutorId(adherenteAjeno.getId());
+
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(clienteRepository.findById(adherenteAjeno.getId())).thenReturn(Optional.of(adherenteAjeno));
+
+        assertThatThrownBy(() -> transaccionService.registrarExtraccion(requestDto))
+                .isInstanceOf(OperacionNoPermitidaException.class);
+
+        verify(cuentaFinancieraRepository, never()).save(any());
+        verify(transaccionRepository, never()).save(any());
+    }
+
+    @Test
+    void registrarExtraccion_deberiaLanzar404_cuandoElEjecutorNoExiste() {
+        UUID inexistente = UUID.randomUUID();
+        requestDto.setTipoTransaccion("EXTRACCION");
+        requestDto.setClienteEjecutorId(inexistente);
+
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(clienteRepository.findById(inexistente)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> transaccionService.registrarExtraccion(requestDto))
+                .isInstanceOf(RecursoNoEncontradoException.class);
+    }
+
+    @Test
+    void registrarDeposito_deberiaAsumirAlTitular_cuandoNoSeIndicaEjecutor() {
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class))).thenAnswer(inv -> inv.getArgument(0));
+        ArgumentCaptor<Transaccion> captor = ArgumentCaptor.forClass(Transaccion.class);
+        when(transaccionRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+        transaccionService.registrarDeposito(requestDto);
+
+        assertThat(captor.getValue().getEjecutor()).isSameAs(titular);
+        verifyNoInteractions(clienteRepository);
     }
 }

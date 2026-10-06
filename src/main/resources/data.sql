@@ -6,7 +6,6 @@ TRUNCATE TABLE transaccion;
 TRUNCATE TABLE caja_ahorro;
 TRUNCATE TABLE cuenta_corriente;
 
-
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- Clientes
@@ -38,8 +37,9 @@ INSERT INTO cuenta_corriente (id, margen_descubierto_autorizado, costo_comision_
     (UUID_TO_BIN('f3eebc99-9c0b-4ef8-bb6d-6bb9bd380f03'), 100000.0, 5000.0);
 
 -- Transacciones (ahora con tipo)
-INSERT INTO transaccion (id, fecha_hora, monto, estado_transaccion, tipo, cuenta_financiera_id, created_date, last_modified_date) VALUES
-                                                                                                                                      (1, NOW(), 50000.00, 'COMPLETADA', 'DEPOSITO', UUID_TO_BIN('f1eebc99-9c0b-4ef8-bb6d-6bb9bd380f01'), NOW(), NOW()),
-                                                                                                                                      (2, NOW(), 12000.50, 'COMPLETADA', 'EXTRACCION', UUID_TO_BIN('f1eebc99-9c0b-4ef8-bb6d-6bb9bd380f01'), NOW(), NOW()),
-                                                                                                                                      (3, NOW(), 100000.00, 'COMPLETADA', 'DEPOSITO', UUID_TO_BIN('f2eebc99-9c0b-4ef8-bb6d-6bb9bd380f02'), NOW(), NOW()),
-                                                                                                                                      (4, NOW(), 150000.00, 'COMPLETADA', 'DEPOSITO', UUID_TO_BIN('f3eebc99-9c0b-4ef8-bb6d-6bb9bd380f03'), NOW(), NOW());
+INSERT INTO transaccion (id, fecha_hora, monto, estado_transaccion, tipo, cuenta_financiera_id, created_date, last_modified_date)
+VALUES
+    (1, NOW(), 50000.00, 'COMPLETADA', 'DEPOSITO', UUID_TO_BIN('f1eebc99-9c0b-4ef8-bb6d-6bb9bd380f01'), NOW(), NOW()),
+    (2, NOW(), 12000.50, 'COMPLETADA', 'EXTRACCION', UUID_TO_BIN('f1eebc99-9c0b-4ef8-bb6d-6bb9bd380f01'), NOW(), NOW()),
+    (3, NOW(), 100000.00, 'COMPLETADA', 'DEPOSITO', UUID_TO_BIN('f2eebc99-9c0b-4ef8-bb6d-6bb9bd380f02'), NOW(), NOW()),
+    (4, NOW(), 150000.00, 'COMPLETADA', 'DEPOSITO', UUID_TO_BIN('f3eebc99-9c0b-4ef8-bb6d-6bb9bd380f03'), NOW(), NOW());
