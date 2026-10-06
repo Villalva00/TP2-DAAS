@@ -2,9 +2,11 @@ package com.carrillovillalvadaas.tp2.service.impl;
 
 import com.carrillovillalvadaas.tp2.dto.TransaccionRequestDto;
 import com.carrillovillalvadaas.tp2.dto.TransaccionResponseDto;
+import com.carrillovillalvadaas.tp2.exception.OperacionNoPermitidaException;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.exception.SaldoInsuficienteException;
 import com.carrillovillalvadaas.tp2.model.*;
+import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
 import com.carrillovillalvadaas.tp2.repository.CuentaFinancieraRepository;
 import com.carrillovillalvadaas.tp2.repository.TransaccionRepository;
 import com.carrillovillalvadaas.tp2.service.TransaccionService;
@@ -37,7 +39,7 @@ public class TransaccionServiceImpl implements TransaccionService {
 
     private final TransaccionRepository transaccionRepository;
     private final CuentaFinancieraRepository cuentaFinancieraRepository;
-
+    private final ClienteRepository clienteRepository;
     /**
      * {@inheritDoc}
      * <p>
@@ -52,11 +54,16 @@ public class TransaccionServiceImpl implements TransaccionService {
 
         CuentaFinanciera cuenta = cuentaFinancieraRepository.findByCbu(Long.parseLong(requestDto.getCbuCuenta()))
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cuenta no encontrada con CBU: " + requestDto.getCbuCuenta()));
+        //agrego la logica del ejecutor
+        Cliente ejecutor =  resolverEjecutor(cuenta, requestDto.getClienteEjecutorId());
+        if (ejecutor.getTipoCliente() == TipoCliente.ADHERENTE) {
+            throw new OperacionNoPermitidaException("Los adherentes solo pueden realizar extracciones");
+        }
 
         cuenta.depositar(requestDto.getMonto().doubleValue());
         cuentaFinancieraRepository.save(cuenta);
 
-        Transaccion transaccion = construirTransaccion(cuenta, requestDto.getMonto().doubleValue(), TipoTransaccion.DEPOSITO, EstadoTransaccion.COMPLETADA);
+        Transaccion transaccion = construirTransaccion(cuenta, requestDto.getMonto().doubleValue(), TipoTransaccion.DEPOSITO, EstadoTransaccion.COMPLETADA, ejecutor);
         Transaccion guardada = transaccionRepository.save(transaccion);
 
         return mapearAResponseDto(guardada);
@@ -77,6 +84,8 @@ public class TransaccionServiceImpl implements TransaccionService {
         CuentaFinanciera cuenta = cuentaFinancieraRepository.findByCbu(Long.parseLong(requestDto.getCbuCuenta()))
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cuenta no encontrada con CBU: " + requestDto.getCbuCuenta()));
 
+        Cliente ejecutor = resolverEjecutor(cuenta, requestDto.getClienteEjecutorId());
+
         Double saldoAntes = cuenta.getSaldoOperativo();
         cuenta.extraer(requestDto.getMonto().doubleValue());
         boolean extraccionExitosa = !saldoAntes.equals(cuenta.getSaldoOperativo());
@@ -90,7 +99,7 @@ public class TransaccionServiceImpl implements TransaccionService {
             estado = EstadoTransaccion.RECHAZADA;
         }
 
-        Transaccion transaccion = construirTransaccion(cuenta, requestDto.getMonto().doubleValue(), TipoTransaccion.EXTRACCION, estado);
+        Transaccion transaccion = construirTransaccion(cuenta, requestDto.getMonto().doubleValue(), TipoTransaccion.EXTRACCION, estado,ejecutor);
         Transaccion transaccionGuardada = transaccionRepository.save(transaccion);
 
         if (!extraccionExitosa) {
@@ -172,13 +181,14 @@ public class TransaccionServiceImpl implements TransaccionService {
      * @param estado Estado de resolución de la transacción.
      * @return Una nueva instancia de {@link Transaccion} construida mediante el patrón Builder.
      */
-    private Transaccion construirTransaccion(CuentaFinanciera cuenta, Double monto, TipoTransaccion tipo, EstadoTransaccion estado) {
+    private Transaccion construirTransaccion(CuentaFinanciera cuenta, Double monto, TipoTransaccion tipo, EstadoTransaccion estado, Cliente ejecutor) {
         return Transaccion.builder()
                 .fechaHora(LocalDateTime.now())
                 .monto(monto)
                 .tipo(tipo)
                 .estadoTransaccion(estado)
                 .cuentaFinanciera(cuenta)
+                .ejecutor(ejecutor)
                 .build();
     }
 
@@ -198,5 +208,34 @@ public class TransaccionServiceImpl implements TransaccionService {
                 .fechaHora(transaccion.getFechaHora())
                 .mensaje("Operación procesada correctamente.")
                 .build();
+    }
+    /**
+     * Determina quién ejecuta la operación y valida que pueda operar sobre la cuenta.
+     *
+     * @param cuenta     Cuenta sobre la que se opera.
+     * @param ejecutorId Id del ejecutor (null = titular de la cuenta).
+     * @return El cliente ejecutor.
+     * @throws RecursoNoEncontradoException si el ejecutor no existe.
+     * @throws OperacionNoPermitidaException si no es el titular de la cuenta ni un adherente suyo.
+     */
+    private Cliente resolverEjecutor(CuentaFinanciera cuenta, UUID ejecutorId) {
+        Cliente titularCuenta = cuenta.getCliente();
+
+        if (ejecutorId == null) {
+            return titularCuenta;
+        }
+
+        Cliente ejecutor = clienteRepository.findById(ejecutorId)
+                .orElseThrow(() -> new RecursoNoEncontradoException("Cliente ejecutor no encontrado con el ID: " + ejecutorId));
+
+        boolean esTitularDeLaCuenta = ejecutor.getId().equals(titularCuenta.getId());
+        boolean esAdherenteDelTitular = ejecutor.getClientePrincipal() != null
+                && ejecutor.getClientePrincipal().getId().equals(titularCuenta.getId());
+
+        if (!esTitularDeLaCuenta && !esAdherenteDelTitular) {
+            throw new OperacionNoPermitidaException("El cliente no está autorizado a operar sobre esta cuenta");
+        }
+
+        return ejecutor;
     }
 }

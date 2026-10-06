@@ -1,0 +1,154 @@
+### ============================================================
+### Issue #5 - Ejecutor en Transaccion y restricción de adherentes
+### Datos de data.sql:
+###   Juan Pérez (titular)  -> cuenta CBU 31000000000001
+###   Laura Ruiz (adherente de Juan, cónyuge)
+###   Tomás Pérez (adherente de Juan, hijo)
+###   María Gómez (otra titular) -> cuenta CBU 31000000000003
+### Si el equipo acuerda 400 en vez de 403, ajustá los asserts de abajo.
+### ============================================================
+
+@host = http://localhost:8080
+@cbuJuan = 31000000000001
+@cbuMaria = 31000000000003
+@juanId = a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+@lauraId = e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55
+@mariaId = b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22
+
+### 1. Depósito SIN clienteEjecutorId -> 201 (funciona como antes)
+POST {{host}}/api/v1/transacciones/deposito
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 1000.00,
+  "tipoTransaccion": "DEPOSITO"
+}
+
+> {%
+    client.test("Depósito sin ejecutor (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### 2. Extracción SIN clienteEjecutorId -> 201 (funciona como antes)
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 500.00,
+  "tipoTransaccion": "EXTRACCION"
+}
+
+> {%
+    client.test("Extracción sin ejecutor (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### 3. Depósito ejecutado por el titular de la cuenta -> 201
+POST {{host}}/api/v1/transacciones/deposito
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 2000.00,
+  "tipoTransaccion": "DEPOSITO",
+  "clienteEjecutorId": "{{juanId}}"
+}
+
+> {%
+    client.test("Depósito del titular (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### 4. Extracción ejecutada por un adherente sobre la cuenta de SU titular -> 201
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 300.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{lauraId}}"
+}
+
+> {%
+    client.test("Extracción de adherente sobre cuenta de su titular (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### 5. Depósito ejecutado por un adherente -> 403
+POST {{host}}/api/v1/transacciones/deposito
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 1000.00,
+  "tipoTransaccion": "DEPOSITO",
+  "clienteEjecutorId": "{{lauraId}}"
+}
+
+> {%
+    client.test("Adherente + depósito rechazado (403)", function () {
+        client.assert(response.status === 403, "Se esperaba 403 y llegó " + response.status);
+    });
+%}
+
+### 6. Extracción de un adherente sobre la cuenta de OTRO titular -> 403
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuMaria}}",
+  "monto": 300.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{lauraId}}"
+}
+
+> {%
+    client.test("Adherente sobre cuenta ajena rechazado (403)", function () {
+        client.assert(response.status === 403, "Se esperaba 403 y llegó " + response.status);
+    });
+%}
+
+### 7. Extracción de un titular sobre la cuenta de OTRO titular -> 403
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuMaria}}",
+  "monto": 300.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{juanId}}"
+}
+
+> {%
+    client.test("Titular sobre cuenta ajena rechazado (403)", function () {
+        client.assert(response.status === 403, "Se esperaba 403 y llegó " + response.status);
+    });
+%}
+
+### 8. Ejecutor inexistente -> 404
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 300.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "00000000-0000-0000-0000-000000000000"
+}
+
+> {%
+    client.test("Ejecutor inexistente (404)", function () {
+        client.assert(response.status === 404, "Se esperaba 404 y llegó " + response.status);
+    });
+%}
+
+### 9. Listar todas las transacciones -> 200
+### (el ejecutor se verifica en MySQL: SELECT id, tipo, BIN_TO_UUID(ejecutor_id) FROM transaccion;)
+GET {{host}}/api/v1/transacciones

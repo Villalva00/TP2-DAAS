@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 /**
  * Objeto de transferencia de datos (DTO) para la recepción y validación
@@ -47,4 +48,10 @@ public class TransaccionRequestDto {
      */
     @NotBlank(message = "El tipo de transacción es obligatorio.")
     private String tipoTransaccion;
+
+    /**
+     * Identificador del cliente que ejecuta la operación (titular o adherente).
+     * Es opcional: si es null, se asume que opera el titular de la cuenta.
+     */
+    private UUID clienteEjecutorId; //Sin anotaciones de validación, porque es opcional. Un UUID mal formado en el JSON devuelve 400 automáticamente.
 }
