@@ -5,20 +5,21 @@ TRUNCATE TABLE cuenta_financiera;
 TRUNCATE TABLE transaccion;
 TRUNCATE TABLE caja_ahorro;
 TRUNCATE TABLE cuenta_corriente;
+TRUNCATE TABLE token_activacion;
 
 SET FOREIGN_KEY_CHECKS = 1;
 
--- Clientes
-INSERT INTO cliente (id, nombre, razon_social, cuil, email, direccion, telefono, cliente_padre_id, tipo_cliente, parentesco, created_date, last_modified_date)
+-- Clientes (todos ACTIVO: los datos de prueba no pasan por el flujo de activación)
+INSERT INTO cliente (id, nombre, razon_social, cuil, email, direccion, telefono, cliente_padre_id, tipo_cliente, parentesco, estado, created_date, last_modified_date)
 VALUES
-    (UUID_TO_BIN('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), 'Juan Pérez', NULL, 20301112229, 'juan.perez@email.com', 'Av. Principal 123', '3881234567', NULL, 'TITULAR', NULL, NOW(), NOW()),
-    (UUID_TO_BIN('b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'), 'María Gómez', NULL, 27312223334, 'maria.gomez@email.com', 'Calle Falsa 456', '3887654321', NULL, 'TITULAR', NULL, NOW(), NOW()),
-    (UUID_TO_BIN('c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'), 'Carlos López', NULL, 20323334445, 'carlos.lopez@email.com', 'Belgrano 789', '3889876543', NULL, 'TITULAR', NULL, NOW(), NOW()),
-    (UUID_TO_BIN('d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'), 'Ana Martínez', NULL, 27334445556, 'ana.martinez@email.com', 'San Martín 321', '3884567890', NULL, 'TITULAR', NULL, NOW(), NOW()),
+    (UUID_TO_BIN('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), 'Juan Pérez', NULL, 20301112229, 'juan.perez@email.com', 'Av. Principal 123', '3881234567', NULL, 'TITULAR', NULL, 'ACTIVO', NOW(), NOW()),
+    (UUID_TO_BIN('b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'), 'María Gómez', NULL, 27312223334, 'maria.gomez@email.com', 'Calle Falsa 456', '3887654321', NULL, 'TITULAR', NULL, 'ACTIVO', NOW(), NOW()),
+    (UUID_TO_BIN('c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33'), 'Carlos López', NULL, 20323334445, 'carlos.lopez@email.com', 'Belgrano 789', '3889876543', NULL, 'TITULAR', NULL, 'ACTIVO', NOW(), NOW()),
+    (UUID_TO_BIN('d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'), 'Ana Martínez', NULL, 27334445556, 'ana.martinez@email.com', 'San Martín 321', '3884567890', NULL, 'TITULAR', NULL, 'ACTIVO', NOW(), NOW()),
 
 -- Adherentes de Juan Pérez
-    (UUID_TO_BIN('e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55'), 'Laura Ruiz', NULL, 27345556667, 'laura.ruiz@email.com', 'Av. Principal 123', '3881112233', UUID_TO_BIN('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), 'ADHERENTE', 'CONYUGE', NOW(), NOW()),
-    (UUID_TO_BIN('e1eebc99-9c0b-4ef8-bb6d-6bb9bd380a66'), 'Tomás Pérez', NULL, 20456667778, 'tomas.perez@email.com', 'Av. Principal 123', '3884445566', UUID_TO_BIN('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), 'ADHERENTE', 'HIJO', NOW(), NOW());
+    (UUID_TO_BIN('e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55'), 'Laura Ruiz', NULL, 27345556667, 'laura.ruiz@email.com', 'Av. Principal 123', '3881112233', UUID_TO_BIN('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), 'ADHERENTE', 'CONYUGE', 'ACTIVO', NOW(), NOW()),
+    (UUID_TO_BIN('e1eebc99-9c0b-4ef8-bb6d-6bb9bd380a66'), 'Tomás Pérez', NULL, 20456667778, 'tomas.perez@email.com', 'Av. Principal 123', '3884445566', UUID_TO_BIN('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), 'ADHERENTE', 'HIJO', 'ACTIVO', NOW(), NOW());
 -- Tabla padre de cuentas
 INSERT INTO cuenta_financiera (id, cbu, alias, saldo_operativo, estado, cliente_id, created_date, last_modified_date)
 VALUES

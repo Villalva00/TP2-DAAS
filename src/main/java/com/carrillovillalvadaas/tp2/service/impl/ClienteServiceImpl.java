@@ -5,14 +5,18 @@ import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
+import com.carrillovillalvadaas.tp2.model.EstadoCliente;
+import com.carrillovillalvadaas.tp2.model.TokenActivacion;
 import com.carrillovillalvadaas.tp2.model.TipoCliente;
 import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
+import com.carrillovillalvadaas.tp2.repository.TokenActivacionRepository;
 import com.carrillovillalvadaas.tp2.service.ClienteService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -33,6 +37,7 @@ import java.util.stream.Collectors;
 public class ClienteServiceImpl implements ClienteService {
 
     private final ClienteRepository clienteRepository;
+    private final TokenActivacionRepository tokenActivacionRepository;
 
     /**
      * {@inheritDoc}
@@ -61,10 +66,13 @@ public class ClienteServiceImpl implements ClienteService {
                 .email(requestDto.getEmail())
                 .telefono(requestDto.getTelefono())
                 .direccion(requestDto.getDireccion())
+                .estado(EstadoCliente.PENDIENTE_ACTIVACION)
                 .build();
 
         Cliente clienteGuardado = clienteRepository.save(clienteEntity);
         log.info("Cliente registrado exitosamente con ID: {}", clienteGuardado.getId());
+
+        generarTokenActivacion(clienteGuardado);
 
         return mapearAResponseDto(clienteGuardado);
     }
@@ -144,6 +152,7 @@ public class ClienteServiceImpl implements ClienteService {
         Cliente cliente = clienteRepository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cliente no encontrado con el ID: " + id)); //[cite: 9, 12]
 
+        tokenActivacionRepository.deleteByClienteId(id);
         clienteRepository.delete(cliente);
         log.info("Cliente con ID {} eliminado correctamente", id);
     }
@@ -172,11 +181,13 @@ public class ClienteServiceImpl implements ClienteService {
                 .tipoCliente(TipoCliente.ADHERENTE)
                 .clientePrincipal(titular)
                 .parentesco(dto.getParentesco())
+                .estado(EstadoCliente.PENDIENTE_ACTIVACION)
                 .build();
-        // TODO (TP5-B #7): asignar estado inicial PENDIENTE_ACTIVACION y generar TokenActivacion.
         // TODO (TP5-B #8): publicar el evento de dominio asíncrono para enviar el email de activación.
         Cliente guardado = clienteRepository.save(adherente);
         log.info("Adherente registrado con ID: {}", guardado.getId());
+
+        generarTokenActivacion(guardado);
 
         return mapearAResponseDto(guardado);
     }
@@ -209,6 +220,26 @@ public class ClienteServiceImpl implements ClienteService {
                 .email(cliente.getEmail())
                 .tipoCliente(cliente.getTipoCliente() != null ? cliente.getTipoCliente().name() : null)
                 .parentesco(cliente.getParentesco()!=null?cliente.getParentesco().name() :null)
+                .estado(cliente.getEstado() != null ? cliente.getEstado().name() : null)
                 .build();
+    }
+
+    /**
+     * Genera y persiste un {@link TokenActivacion} (UUID) válido por 24 horas para el
+     * cliente recién registrado. El token solo viaja por email: nunca se expone en el
+     * {@link ClienteResponseDto}.
+     *
+     * @param cliente Cliente recién persistido en estado PENDIENTE_ACTIVACION.
+     */
+    private void generarTokenActivacion(Cliente cliente) {
+        TokenActivacion token = TokenActivacion.builder()
+                .token(UUID.randomUUID())
+                .fechaExpiracion(LocalDateTime.now().plusHours(24))
+                .usado(false)
+                .cliente(cliente)
+                .build();
+
+        tokenActivacionRepository.save(token);
+        log.info("Token de activación generado para el cliente {} (expira {})", cliente.getId(), token.getFechaExpiracion());
     }
 }

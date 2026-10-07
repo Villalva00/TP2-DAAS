@@ -1,0 +1,168 @@
+### ============================================================
+### Issue #6 - Tope diario acumulado de extracciones
+### Topes: titular 100.000 / adherente 70.000 (application.properties)
+###
+### IMPORTANTE: reiniciá la app antes de correr este escenario.
+### data.sql resetea las transacciones y los saldos al arrancar,
+### así el acumulado del día empieza en cero.
+### Los requests están pensados para correrse EN ORDEN (0 a 7).
+### ============================================================
+
+@host = http://localhost:8080
+@cbuJuan = 31000000000001
+@juanId = a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+@lauraId = e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55
+
+### 0. Depósito de 200.000 en la cuenta de Juan, para que el saldo nunca sea el motivo del rechazo
+POST {{host}}/api/v1/transacciones/deposito
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 200000.00,
+  "tipoTransaccion": "DEPOSITO",
+  "clienteEjecutorId": "{{juanId}}"
+}
+
+> {%
+    client.test("Depósito (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### 1. Titular extrae 60.000 -> 201 (acumulado: 60.000 / 100.000)
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 60000.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{juanId}}"
+}
+
+> {%
+    client.test("Primera extracción del titular (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### 2. Titular extrae 50.000 más -> 400 (60.000 + 50.000 supera 100.000)
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 50000.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{juanId}}"
+}
+
+> {%
+    client.test("Segunda extracción rechazada por tope (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+        client.assert(response.body.message.indexOf("Límite diario") !== -1, "El mensaje debe indicar el límite diario");
+    });
+%}
+
+### 3. Adherente (Laura) extrae 70.000 de la cuenta de su titular -> 201
+### Su tope es propio: los 60.000 del titular NO cuentan en su acumulado
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 70000.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{lauraId}}"
+}
+
+> {%
+    client.test("Adherente dentro de su tope propio (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### 4. Adherente intenta extraer 1 más -> 400 (70.000 + 1 supera 70.000)
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 1.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{lauraId}}"
+}
+
+> {%
+    client.test("Adherente sobre su tope (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+        client.assert(response.body.message.indexOf("Límite diario") !== -1, "El mensaje debe indicar el límite diario");
+    });
+%}
+
+### 5. Titular extrae 40.000 -> 201 (60.000 + 40.000 = 100.000 justo el tope)
+### El rechazo de 50.000 del request 2 NO cuenta en el acumulado
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 40000.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{juanId}}"
+}
+
+> {%
+    client.test("Extracción hasta el tope exacto (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### 6. Titular extrae 1 más -> 400 (ya está en el tope)
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 1.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{juanId}}"
+}
+
+> {%
+    client.test("Titular en el tope (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+    });
+%}
+
+### 7. Listar transacciones: deben verse las RECHAZADA (requests 2, 4 y 6)
+GET {{host}}/api/v1/transacciones
+
+### ------------------------------------------------------------
+### "Al día siguiente el acumulado vuelve a cero"
+### Simulá el paso del tiempo corriendo en MySQL:
+###
+###   UPDATE transaccion
+###   SET fecha_hora = fecha_hora - INTERVAL 1 DAY
+###   WHERE ejecutor_id = UUID_TO_BIN('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
+###
+### Después ejecutá este request: debe dar 201 (el acumulado de hoy es 0).
+### ------------------------------------------------------------
+
+### 8. Titular extrae 60.000 "al día siguiente" -> 201
+POST {{host}}/api/v1/transacciones/extraccion
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbuJuan}}",
+  "monto": 60000.00,
+  "tipoTransaccion": "EXTRACCION",
+  "clienteEjecutorId": "{{juanId}}"
+}
+
+> {%
+    client.test("Acumulado reiniciado al día siguiente (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
