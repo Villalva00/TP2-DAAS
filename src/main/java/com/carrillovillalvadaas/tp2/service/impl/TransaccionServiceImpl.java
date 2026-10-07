@@ -261,24 +261,32 @@ public class TransaccionServiceImpl implements TransaccionService {
      * @param ejecutorId Id del ejecutor (null = titular de la cuenta).
      * @return El cliente ejecutor.
      * @throws RecursoNoEncontradoException si el ejecutor no existe.
-     * @throws OperacionNoPermitidaException si no es el titular de la cuenta ni un adherente suyo.
+     * @throws OperacionNoPermitidaException si no es el titular de la cuenta ni un adherente suyo,
+     *                                       o si su estado no es ACTIVO.
      */
     private Cliente resolverEjecutor(CuentaFinanciera cuenta, UUID ejecutorId) {
         Cliente titularCuenta = cuenta.getCliente();
 
+        Cliente ejecutor;
+
         if (ejecutorId == null) {
-            return titularCuenta;
+            ejecutor = titularCuenta;
+        } else {
+            ejecutor = clienteRepository.findById(ejecutorId)
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Cliente ejecutor no encontrado con el ID: " + ejecutorId));
+
+            boolean esTitularDeLaCuenta = ejecutor.getId().equals(titularCuenta.getId());
+            boolean esAdherenteDelTitular = ejecutor.getClientePrincipal() != null
+                    && ejecutor.getClientePrincipal().getId().equals(titularCuenta.getId());
+
+            if (!esTitularDeLaCuenta && !esAdherenteDelTitular) {
+                throw new OperacionNoPermitidaException("El cliente no está autorizado a operar sobre esta cuenta");
+            }
         }
 
-        Cliente ejecutor = clienteRepository.findById(ejecutorId)
-                .orElseThrow(() -> new RecursoNoEncontradoException("Cliente ejecutor no encontrado con el ID: " + ejecutorId));
-
-        boolean esTitularDeLaCuenta = ejecutor.getId().equals(titularCuenta.getId());
-        boolean esAdherenteDelTitular = ejecutor.getClientePrincipal() != null
-                && ejecutor.getClientePrincipal().getId().equals(titularCuenta.getId());
-
-        if (!esTitularDeLaCuenta && !esAdherenteDelTitular) {
-            throw new OperacionNoPermitidaException("El cliente no está autorizado a operar sobre esta cuenta");
+        if (ejecutor.getEstado() != EstadoCliente.ACTIVO) {
+            log.warn("Operación denegada: el cliente {} se encuentra en estado {}", ejecutor.getId(), ejecutor.getEstado());
+            throw new OperacionNoPermitidaException("El cliente no está activo y no puede realizar operaciones");
         }
 
         return ejecutor;

@@ -54,4 +54,10 @@ public class ClienteResponseDto {
     * Parentesco con el titular (CONYUGE O HIJO). Null si es titular.
      */
     private String parentesco;
+
+    /*
+    * Estado de activación del cliente (PENDIENTE_ACTIVACION o ACTIVO).
+     * El token de activación nunca se expone en este DTO.
+     */
+    private String estado;
 }

@@ -99,6 +99,15 @@ public class Cliente extends EntidadAuditable {
     @Column(name="parentesco", length=20)
     private Parentesco parentesco;
 
+    /*
+     * Estado de activación del cliente. Todo cliente nuevo se da de alta en
+     * PENDIENTE_ACTIVACION hasta canjear el token de activación.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name="estado", nullable = false, length=30)
+    @Builder.Default
+    private EstadoCliente estado = EstadoCliente.PENDIENTE_ACTIVACION;
+
     /**
      *  Relación reflexiva de 1 a muchos entre clientes
      * @ManyToOne Define que muchos clientes secundarios pueden estar asociados a un único clientePrincipal

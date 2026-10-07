@@ -79,11 +79,14 @@ class TransaccionServiceImplTest {
         cuenta.setCbu(1234567890123456789L);
         cuenta.setSaldoOperativo(1000.0);
         cuenta.setEstado(EstadoCuenta.ACTIVA);
-        titular = Cliente.builder().id(UUID.randomUUID()).nombre("Titular").build();
+        titular = Cliente.builder().id(UUID.randomUUID()).nombre("Titular")
+                .estado(EstadoCliente.ACTIVO)
+                .build();
         adherente = Cliente.builder().id(UUID.randomUUID()).nombre("Adherente")
                 .tipoCliente(TipoCliente.ADHERENTE)
                 .clientePrincipal(titular)
                 .parentesco(Parentesco.HIJO)
+                .estado(EstadoCliente.ACTIVO)
                 .build();
         cuenta.setCliente(titular);
         requestDto = new TransaccionRequestDto();
@@ -223,6 +226,48 @@ class TransaccionServiceImplTest {
         verify(transaccionRepository, never()).save(any());
     }
 
+    /**
+     * Un cliente en estado PENDIENTE_ACTIVACION no puede operar: cualquier depósito
+     * realizado por un ejecutor no ACTIVO debe rechazarse antes de tocar el saldo.
+     */
+    @Test
+    void registrarDeposito_deberiaRechazar_cuandoElClienteNoEstaActivo() {
+        titular.setEstado(EstadoCliente.PENDIENTE_ACTIVACION);
+        requestDto.setClienteEjecutorId(titular.getId());
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(clienteRepository.findById(titular.getId())).thenReturn(Optional.of(titular));
+
+        assertThatThrownBy(() -> transaccionService.registrarDeposito(requestDto))
+                .isInstanceOf(OperacionNoPermitidaException.class)
+                .hasMessageContaining("no está activo");
+
+        assertThat(cuenta.getSaldoOperativo()).isEqualTo(1000.0);
+        verify(cuentaFinancieraRepository, never()).save(any());
+        verify(transaccionRepository, never()).save(any());
+    }
+
+    /**
+     * Una extracción solicitada por un adherente pendiente de activación también debe
+     * rechazarse, incluso estando dentro de su tope diario.
+     */
+    @Test
+    void registrarExtraccion_deberiaRechazar_cuandoElAdherenteNoEstaActivo() {
+        adherente.setEstado(EstadoCliente.PENDIENTE_ACTIVACION);
+        requestDto.setMonto(BigDecimal.valueOf(100.0));
+        requestDto.setTipoTransaccion("EXTRACCION");
+        requestDto.setClienteEjecutorId(adherente.getId());
+
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(clienteRepository.findById(adherente.getId())).thenReturn(Optional.of(adherente));
+
+        assertThatThrownBy(() -> transaccionService.registrarExtraccion(requestDto))
+                .isInstanceOf(OperacionNoPermitidaException.class)
+                .hasMessageContaining("no está activo");
+
+        assertThat(cuenta.getSaldoOperativo()).isEqualTo(1000.0);
+        verify(transaccionRepository, never()).save(any());
+    }
+
     @Test
     void registrarExtraccion_deberiaGuardarElEjecutor_cuandoEsAdherenteDelTitular() {
         requestDto.setMonto(BigDecimal.valueOf(300.0));
@@ -243,11 +288,14 @@ class TransaccionServiceImplTest {
 
     @Test
     void registrarExtraccion_deberiaRechazar_cuandoElAdherenteEsDeOtroTitular() {
-        Cliente otroTitular = Cliente.builder().id(UUID.randomUUID()).nombre("Otro").build();
+        Cliente otroTitular = Cliente.builder().id(UUID.randomUUID()).nombre("Otro")
+                .estado(EstadoCliente.ACTIVO)
+                .build();
         Cliente adherenteAjeno = Cliente.builder().id(UUID.randomUUID()).nombre("Ajeno")
                 .tipoCliente(TipoCliente.ADHERENTE)
                 .clientePrincipal(otroTitular)
                 .parentesco(Parentesco.CONYUGE)
+                .estado(EstadoCliente.ACTIVO)
                 .build();
         requestDto.setTipoTransaccion("EXTRACCION");
         requestDto.setClienteEjecutorId(adherenteAjeno.getId());

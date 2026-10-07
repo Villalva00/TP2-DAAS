@@ -5,17 +5,22 @@ import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
+import com.carrillovillalvadaas.tp2.model.EstadoCliente;
 import com.carrillovillalvadaas.tp2.model.Parentesco;
 import com.carrillovillalvadaas.tp2.model.TipoCliente;
+import com.carrillovillalvadaas.tp2.model.TokenActivacion;
 import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
+import com.carrillovillalvadaas.tp2.repository.TokenActivacionRepository;
 import com.carrillovillalvadaas.tp2.service.impl.ClienteServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,6 +44,9 @@ class ClienteServiceImplTest {
 
     @Mock
     private ClienteRepository clienteRepository;
+
+    @Mock
+    private TokenActivacionRepository tokenActivacionRepository;
 
     @InjectMocks
     private ClienteServiceImpl clienteService;
@@ -85,6 +93,58 @@ class ClienteServiceImplTest {
         assertThat(resultado).isNotNull();
         assertThat(resultado.getNombre()).isEqualTo("Elias Villalba");
         verify(clienteRepository).save(any(Cliente.class));
+        verify(tokenActivacionRepository).save(any(TokenActivacion.class));
+    }
+
+    /**
+     * Verifica que todo cliente nuevo quede en estado PENDIENTE_ACTIVACION y reciba
+     * un token de activación (UUID) que expira exactamente 24 horas después de emitirse.
+     */
+    @Test
+    void crearCliente_deberiaRegistrarPendienteYGenerarTokenDe24Horas() {
+        when(clienteRepository.existsByCuilOrEmail(20123456789L, "elias@mail.com")).thenReturn(false);
+        when(clienteRepository.save(any(Cliente.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tokenActivacionRepository.save(any(TokenActivacion.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        LocalDateTime antesDeCrear = LocalDateTime.now();
+        ClienteResponseDto resultado = clienteService.crearCliente(requestDto);
+        LocalDateTime despuesDeCrear = LocalDateTime.now();
+
+        ArgumentCaptor<Cliente> clienteCaptor = ArgumentCaptor.forClass(Cliente.class);
+        verify(clienteRepository).save(clienteCaptor.capture());
+        assertThat(clienteCaptor.getValue().getEstado()).isEqualTo(EstadoCliente.PENDIENTE_ACTIVACION);
+
+        ArgumentCaptor<TokenActivacion> tokenCaptor = ArgumentCaptor.forClass(TokenActivacion.class);
+        verify(tokenActivacionRepository).save(tokenCaptor.capture());
+
+        TokenActivacion token = tokenCaptor.getValue();
+        assertThat(token.getToken()).isNotNull();
+        assertThat(token.isUsado()).isFalse();
+        assertThat(token.getCliente()).isSameAs(clienteCaptor.getValue());
+        assertThat(token.getFechaExpiracion())
+                .isBetween(antesDeCrear.plusHours(24), despuesDeCrear.plusHours(24).plusSeconds(1))
+                .isAfter(antesDeCrear.plusHours(24).minusSeconds(1));
+
+        assertThat(resultado.getEstado()).isEqualTo("PENDIENTE_ACTIVACION");
+    }
+
+    /**
+     * Verifica que la respuesta del alta exponga el estado pero nunca el token de
+     * activación: éste solo viaja por email.
+     */
+    @Test
+    void crearCliente_noDeberiaExponerElTokenEnLaRespuesta() {
+        when(clienteRepository.existsByCuilOrEmail(20123456789L, "elias@mail.com")).thenReturn(false);
+        when(clienteRepository.save(any(Cliente.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tokenActivacionRepository.save(any(TokenActivacion.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ClienteResponseDto resultado = clienteService.crearCliente(requestDto);
+
+        assertThat(resultado).isNotNull();
+        assertThat(ClienteResponseDto.class.getDeclaredFields())
+                .extracting(campo -> campo.getName())
+                .doesNotContain("token", "tokenActivacion");
+        assertThat(resultado.getEstado()).isEqualTo("PENDIENTE_ACTIVACION");
     }
 
     /**
@@ -150,6 +210,7 @@ class ClienteServiceImplTest {
 
         clienteService.eliminarPorId(clienteId);
 
+        verify(tokenActivacionRepository).deleteByClienteId(clienteId);
         verify(clienteRepository).delete(clienteEntity);
     }
     @Test
@@ -162,11 +223,14 @@ class ClienteServiceImplTest {
         when(clienteRepository.findById(clienteId)).thenReturn(Optional.of(clienteEntity));
         when(clienteRepository.existsByCuilOrEmail(27345556667L, "laura@mail.com")).thenReturn(false);
         when(clienteRepository.save(any(Cliente.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tokenActivacionRepository.save(any(TokenActivacion.class))).thenAnswer(inv -> inv.getArgument(0));
 
         ClienteResponseDto resultado = clienteService.crearAdherente(clienteId, dto);
 
         assertThat(resultado.getTipoCliente()).isEqualTo("ADHERENTE");
         assertThat(resultado.getParentesco()).isEqualTo("CONYUGE");
+        assertThat(resultado.getEstado()).isEqualTo("PENDIENTE_ACTIVACION");
+        verify(tokenActivacionRepository).save(any(TokenActivacion.class));
     }
 
     @Test
