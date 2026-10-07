@@ -1,7 +1,9 @@
 package com.carrillovillalvadaas.tp2.service.impl;
 
+import com.carrillovillalvadaas.tp2.config.LimitesExtraccionProperties;
 import com.carrillovillalvadaas.tp2.dto.TransaccionRequestDto;
 import com.carrillovillalvadaas.tp2.dto.TransaccionResponseDto;
+import com.carrillovillalvadaas.tp2.exception.LimiteDiarioExcedidoException;
 import com.carrillovillalvadaas.tp2.exception.OperacionNoPermitidaException;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.exception.SaldoInsuficienteException;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -40,6 +43,7 @@ public class TransaccionServiceImpl implements TransaccionService {
     private final TransaccionRepository transaccionRepository;
     private final CuentaFinancieraRepository cuentaFinancieraRepository;
     private final ClienteRepository clienteRepository;
+    private final LimitesExtraccionProperties limitesExtraccion;
     /**
      * {@inheritDoc}
      * <p>
@@ -72,12 +76,14 @@ public class TransaccionServiceImpl implements TransaccionService {
     /**
      * {@inheritDoc}
      * <p>
-     * Busca la cuenta por su CBU, intenta extraer el monto solicitado y evalúa el éxito de la operación.
+     * Busca la cuenta por su CBU, valida el tope diario acumulado de extracciones del ejecutor
+     * y luego intenta extraer el monto solicitado. Si supera el tope diario, registra la
+     * transacción como RECHAZADA y lanza {@link LimiteDiarioExcedidoException}.
      * Si no hay fondos suficientes, registra la transacción como RECHAZADA y lanza {@link SaldoInsuficienteException}.
      * </p>
      */
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = LimiteDiarioExcedidoException.class)
     public TransaccionResponseDto registrarExtraccion(TransaccionRequestDto requestDto) {
         log.info("Registrando extracción de {} en cuenta CBU: {}", requestDto.getMonto(), requestDto.getCbuCuenta());
 
@@ -85,6 +91,8 @@ public class TransaccionServiceImpl implements TransaccionService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Cuenta no encontrada con CBU: " + requestDto.getCbuCuenta()));
 
         Cliente ejecutor = resolverEjecutor(cuenta, requestDto.getClienteEjecutorId());
+
+        validarTopeDiario(cuenta, ejecutor, requestDto.getMonto());
 
         Double saldoAntes = cuenta.getSaldoOperativo();
         cuenta.extraer(requestDto.getMonto().doubleValue());
@@ -209,6 +217,43 @@ public class TransaccionServiceImpl implements TransaccionService {
                 .mensaje("Operación procesada correctamente.")
                 .build();
     }
+    /**
+     * Valida que la extracción solicitada no haga superar al ejecutor su tope diario de extracción.
+     * <p>
+     * Cada cliente tiene su propio acumulado: el titular y cada adherente no comparten bolsa.
+     * Solo se contabilizan las extracciones COMPLETADAS del día en curso, por lo que las
+     * transacciones rechazadas no consumen el tope y al día siguiente el acumulado vuelve a cero.
+     * </p>
+     *
+     * @param cuenta   Cuenta sobre la que se opera.
+     * @param ejecutor Cliente que realiza la extracción (titular o adherente).
+     * @param monto    Monto solicitado a extraer.
+     * @throws LimiteDiarioExcedidoException si acumulado + monto supera el tope del ejecutor.
+     */
+    private void validarTopeDiario(CuentaFinanciera cuenta, Cliente ejecutor, BigDecimal monto) {
+        Double tope = limitesExtraccion.limiteParaTipo(ejecutor.getTipoCliente());
+
+        LocalDate hoy = LocalDate.now();
+        Double acumuladoConsulta = transaccionRepository.sumarMontoPorEjecutorEntre(
+                ejecutor.getId(),
+                TipoTransaccion.EXTRACCION,
+                EstadoTransaccion.COMPLETADA,
+                hoy.atStartOfDay(),
+                hoy.plusDays(1).atStartOfDay());
+        double acumulado = acumuladoConsulta != null ? acumuladoConsulta : 0.0;
+
+        if (acumulado + monto.doubleValue() > tope) {
+            log.warn("Tope diario de extracción excedido para cliente {}: acumulado {}, monto {}, tope {}",
+                    ejecutor.getId(), acumulado, monto, tope);
+            Transaccion rechazada = construirTransaccion(
+                    cuenta, monto.doubleValue(), TipoTransaccion.EXTRACCION, EstadoTransaccion.RECHAZADA, ejecutor);
+            transaccionRepository.save(rechazada);
+            throw new LimiteDiarioExcedidoException(
+                    "Límite diario de extracción excedido. Tope: " + tope + ", acumulado del día: " + acumulado,
+                    tope, acumulado);
+        }
+    }
+
     /**
      * Determina quién ejecuta la operación y valida que pueda operar sobre la cuenta.
      *

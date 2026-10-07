@@ -108,5 +108,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
     }
 
+    /**
+     * Intercepta la excepción {@link LimiteDiarioExcedidoException} cuando una extracción haría
+     * superar al ejecutor su tope diario acumulado.
+     *
+     * @param ex Excepción capturada con el tope configurado y el acumulado del día.
+     * @return Una {@link ResponseEntity} conteniendo un mapa JSON con el error, el tope,
+     *         el acumulado y estado HTTP 400 (BAD_REQUEST).
+     */
+    @ExceptionHandler(LimiteDiarioExcedidoException.class)
+    public ResponseEntity<Map<String, Object>> handleLimiteDiarioExcedido(LimiteDiarioExcedidoException ex) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("timestamp", LocalDateTime.now());
+        errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
+        errorResponse.put("error", "Límite diario de extracción excedido");
+        errorResponse.put("message", ex.getMessage());
+        errorResponse.put("tope", ex.getTope());
+        errorResponse.put("acumulado", ex.getAcumulado());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
 
 }

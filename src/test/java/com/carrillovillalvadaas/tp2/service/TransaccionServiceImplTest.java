@@ -1,7 +1,9 @@
 package com.carrillovillalvadaas.tp2.service;
 
+import com.carrillovillalvadaas.tp2.config.LimitesExtraccionProperties;
 import com.carrillovillalvadaas.tp2.dto.TransaccionRequestDto;
 import com.carrillovillalvadaas.tp2.dto.TransaccionResponseDto;
+import com.carrillovillalvadaas.tp2.exception.LimiteDiarioExcedidoException;
 import com.carrillovillalvadaas.tp2.exception.OperacionNoPermitidaException;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.exception.SaldoInsuficienteException;
@@ -19,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -59,6 +62,9 @@ class TransaccionServiceImplTest {
     @Mock
     private ClienteRepository clienteRepository;
 
+    @Mock
+    private LimitesExtraccionProperties limitesExtraccion;
+
     private Cliente titular;
     private Cliente adherente;
     /**
@@ -84,6 +90,8 @@ class TransaccionServiceImplTest {
         requestDto.setCbuCuenta("1234567890123456789");
         requestDto.setMonto(BigDecimal.valueOf(200.0));
         requestDto.setTipoTransaccion("DEPOSITO");
+
+        lenient().when(limitesExtraccion.limiteParaTipo(any(TipoCliente.class))).thenReturn(100000.0);
     }
 
     /**
@@ -278,5 +286,139 @@ class TransaccionServiceImplTest {
 
         assertThat(captor.getValue().getEjecutor()).isSameAs(titular);
         verifyNoInteractions(clienteRepository);
+    }
+
+    /**
+     * Tope diario del titular (100.000): 60.000 ya extraídos en el día + 50.000 solicitados
+     * superan el tope, por lo que la segunda extracción debe rechazarse.
+     */
+    @Test
+    void registrarExtraccion_deberiaRechazarYGuardarTransaccion_cuandoSuperaElTopeDiarioDelTitular() {
+        requestDto.setMonto(BigDecimal.valueOf(50000.0));
+        requestDto.setTipoTransaccion("EXTRACCION");
+
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(transaccionRepository.sumarMontoPorEjecutorEntre(
+                eq(titular.getId()), eq(TipoTransaccion.EXTRACCION), eq(EstadoTransaccion.COMPLETADA),
+                any(), any())).thenReturn(60000.0);
+
+        assertThatThrownBy(() -> transaccionService.registrarExtraccion(requestDto))
+                .isInstanceOf(LimiteDiarioExcedidoException.class)
+                .hasMessageContaining("Tope: 100000.0")
+                .hasMessageContaining("acumulado del día: 60000.0");
+
+        ArgumentCaptor<Transaccion> captor = ArgumentCaptor.forClass(Transaccion.class);
+        verify(transaccionRepository).save(captor.capture());
+        assertThat(captor.getValue().getEstadoTransaccion()).isEqualTo(EstadoTransaccion.RECHAZADA);
+        assertThat(captor.getValue().getEjecutor()).isSameAs(titular);
+        assertThat(captor.getValue().getCuentaFinanciera()).isSameAs(cuenta);
+
+        assertThat(cuenta.getSaldoOperativo()).isEqualTo(1000.0);
+        verify(cuentaFinancieraRepository, never()).save(any());
+    }
+
+    /**
+     * El adherente tiene tope propio de 70.000, independiente del titular:
+     * 30.000 acumulados + 45.000 solicitados lo superan, aunque el tope del titular (100.000) lo permitiría.
+     */
+    @Test
+    void registrarExtraccion_deberiaRechazarAlAdherente_cuandoSuperaSuTopePropio() {
+        requestDto.setMonto(BigDecimal.valueOf(45000.0));
+        requestDto.setTipoTransaccion("EXTRACCION");
+        requestDto.setClienteEjecutorId(adherente.getId());
+
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(clienteRepository.findById(adherente.getId())).thenReturn(Optional.of(adherente));
+        when(limitesExtraccion.limiteParaTipo(TipoCliente.ADHERENTE)).thenReturn(70000.0);
+        when(transaccionRepository.sumarMontoPorEjecutorEntre(
+                eq(adherente.getId()), eq(TipoTransaccion.EXTRACCION), eq(EstadoTransaccion.COMPLETADA),
+                any(), any())).thenReturn(30000.0);
+
+        assertThatThrownBy(() -> transaccionService.registrarExtraccion(requestDto))
+                .isInstanceOf(LimiteDiarioExcedidoException.class)
+                .hasMessageContaining("Tope: 70000.0");
+
+        ArgumentCaptor<Transaccion> captor = ArgumentCaptor.forClass(Transaccion.class);
+        verify(transaccionRepository).save(captor.capture());
+        assertThat(captor.getValue().getEjecutor()).isSameAs(adherente);
+        assertThat(captor.getValue().getEstadoTransaccion()).isEqualTo(EstadoTransaccion.RECHAZADA);
+        assertThat(cuenta.getSaldoOperativo()).isEqualTo(1000.0);
+        verify(cuentaFinancieraRepository, never()).save(any());
+    }
+
+    /**
+     * Un adherente con espacio disponible en su propio tope sí puede extraer:
+     * 10.000 acumulados + 60.000 solicitados quedan dentro de los 70.000.
+     */
+    @Test
+    void registrarExtraccion_deberiaPermitirAlAdherente_dentroDeSuTopePropio() {
+        cuenta.setSaldoOperativo(1000000.0);
+        requestDto.setMonto(BigDecimal.valueOf(60000.0));
+        requestDto.setTipoTransaccion("EXTRACCION");
+        requestDto.setClienteEjecutorId(adherente.getId());
+
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(clienteRepository.findById(adherente.getId())).thenReturn(Optional.of(adherente));
+        when(limitesExtraccion.limiteParaTipo(TipoCliente.ADHERENTE)).thenReturn(70000.0);
+        when(transaccionRepository.sumarMontoPorEjecutorEntre(
+                eq(adherente.getId()), eq(TipoTransaccion.EXTRACCION), eq(EstadoTransaccion.COMPLETADA),
+                any(), any())).thenReturn(10000.0);
+        when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(transaccionRepository.save(any(Transaccion.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        TransaccionResponseDto resultado = transaccionService.registrarExtraccion(requestDto);
+
+        assertThat(resultado.getEstadoTransaccion()).isEqualTo("COMPLETADA");
+        assertThat(cuenta.getSaldoOperativo()).isEqualTo(940000.0);
+    }
+    /**
+     * Cuando el acumulado del día más el monto solicitado igualan exactamente el tope,
+     * la extracción está permitida (solo se rechaza al superarlo).
+     */
+    @Test
+    void registrarExtraccion_deberiaPermitir_cuandoElAcumuladoMasElMontoIgualanElTope() {
+        cuenta.setSaldoOperativo(1000000.0);
+        requestDto.setMonto(BigDecimal.valueOf(40000.0));
+        requestDto.setTipoTransaccion("EXTRACCION");
+
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(transaccionRepository.sumarMontoPorEjecutorEntre(
+                eq(titular.getId()), eq(TipoTransaccion.EXTRACCION), eq(EstadoTransaccion.COMPLETADA),
+                any(), any())).thenReturn(60000.0);
+        when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(transaccionRepository.save(any(Transaccion.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        TransaccionResponseDto resultado = transaccionService.registrarExtraccion(requestDto);
+
+        assertThat(resultado.getEstadoTransaccion()).isEqualTo("COMPLETADA");
+    }
+
+    /**
+     * El acumulado debe calcularse solo con extracciones COMPLETADAS del ejecutor dentro de la jornada actual:
+     * las rechazadas no consumen tope y al día siguiente el acumulado vuelve a cero.
+     */
+    @Test
+    void registrarExtraccion_deberiaConsultarSoloExtraccionesCompletadasDelDiaDelEjecutor() {
+        requestDto.setMonto(BigDecimal.valueOf(100.0));
+        requestDto.setTipoTransaccion("EXTRACCION");
+
+        when(cuentaFinancieraRepository.findByCbu(1234567890123456789L)).thenReturn(Optional.of(cuenta));
+        when(cuentaFinancieraRepository.save(any(CuentaFinanciera.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(transaccionRepository.save(any(Transaccion.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ArgumentCaptor<LocalDateTime> desdeCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> hastaCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        when(transaccionRepository.sumarMontoPorEjecutorEntre(
+                eq(titular.getId()), eq(TipoTransaccion.EXTRACCION), eq(EstadoTransaccion.COMPLETADA),
+                desdeCaptor.capture(), hastaCaptor.capture())).thenReturn(0.0);
+
+        transaccionService.registrarExtraccion(requestDto);
+
+        LocalDate hoy = LocalDate.now();
+        assertThat(desdeCaptor.getValue()).isEqualTo(hoy.atStartOfDay());
+        assertThat(hastaCaptor.getValue()).isEqualTo(hoy.plusDays(1).atStartOfDay());
+        verify(transaccionRepository).sumarMontoPorEjecutorEntre(
+                eq(titular.getId()), eq(TipoTransaccion.EXTRACCION), eq(EstadoTransaccion.COMPLETADA),
+                any(), any());
     }
 }
