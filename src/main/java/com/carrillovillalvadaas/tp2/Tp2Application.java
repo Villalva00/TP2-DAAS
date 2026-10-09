@@ -4,6 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.scheduling.annotation.EnableScheduling;
 /**
  * Clase principal que actúa como punto de entrada de la aplicación Spring Boot
  * para el sistema bancario.
@@ -13,6 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
  */
 @SpringBootApplication
 @EnableJpaAuditing
+@EnableScheduling
 //esta anotacion scanea el paquete tp2Aplicationy sus subpaquetes, asi enuentra el record en config y lo registra como been
 @ConfigurationPropertiesScan
 public class Tp2Application {

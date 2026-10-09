@@ -83,4 +83,25 @@ public interface TransaccionRepository extends JpaRepository<Transaccion, Long> 
                                       @Param("desde") LocalDateTime desde,
                                       @Param("hasta") LocalDateTime hasta);
 
+    /**
+     * Verifica si una cuenta ya fue debitada por comisión de mantenimiento dentro
+     * del período indicado. Se usa como control de idempotencia de la liquidación
+     * mensual: no se vuelve a debitar una cuenta que ya pagó su comisión del mes.
+     *
+     * @param cuentaId Identificador de la cuenta financiera.
+     * @param tipo     Tipo de transacción esperado (DEBITO_COMISION).
+     * @param desde    Límite inferior inclusive del período.
+     * @param hasta    Límite superior exclusivo del período.
+     * @return {@code true} si ya existe una comisión debitada en el período.
+     */
+    @Query("SELECT COUNT(t) > 0 FROM Transaccion t " +
+            "WHERE t.cuentaFinanciera.id = :cuentaId " +
+            "AND t.tipo = :tipo " +
+            "AND t.fechaHora >= :desde " +
+            "AND t.fechaHora < :hasta")
+    boolean existsDebitoComisionEnPeriodo(@Param("cuentaId") UUID cuentaId,
+                                          @Param("tipo") TipoTransaccion tipo,
+                                          @Param("desde") LocalDateTime desde,
+                                          @Param("hasta") LocalDateTime hasta);
+
 }
