@@ -5,6 +5,7 @@ import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
 import com.carrillovillalvadaas.tp2.event.ClienteRegistradoEvent;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
+import com.carrillovillalvadaas.tp2.exception.TokenInvalidoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
 import com.carrillovillalvadaas.tp2.model.EstadoCliente;
 import com.carrillovillalvadaas.tp2.model.Parentesco;
@@ -293,5 +294,93 @@ class ClienteServiceImplTest {
 
         assertThatThrownBy(() -> clienteService.crearAdherente(inexistente, dto))
                 .isInstanceOf(RecursoNoEncontradoException.class);
+    }
+
+    /**
+     * Verifica que un token válido (existente, sin usar y vigente) active al cliente,
+     * lo deje en ACTIVO y marque el token como usado.
+     */
+    @Test
+    void activarCliente_deberiaActivarClienteYMarcarTokenUsado_cuandoTokenEsValido() {
+        UUID token = UUID.randomUUID();
+        TokenActivacion tokenActivacion = tokenVigente(token, false);
+        when(tokenActivacionRepository.findByToken(token)).thenReturn(Optional.of(tokenActivacion));
+        when(clienteRepository.save(any(Cliente.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tokenActivacionRepository.save(any(TokenActivacion.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ClienteResponseDto resultado = clienteService.activarCliente(token.toString());
+
+        assertThat(resultado.getEstado()).isEqualTo("ACTIVO");
+        assertThat(clienteEntity.getEstado()).isEqualTo(EstadoCliente.ACTIVO);
+        assertThat(tokenActivacion.isUsado()).isTrue();
+        verify(clienteRepository).save(clienteEntity);
+        verify(tokenActivacionRepository).save(tokenActivacion);
+    }
+
+    /**
+     * Verifica que un token inexistente en la base de datos lance {@link TokenInvalidoException}.
+     */
+    @Test
+    void activarCliente_deberiaLanzarExcepcion_cuandoTokenNoExiste() {
+        UUID token = UUID.randomUUID();
+        when(tokenActivacionRepository.findByToken(token)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> clienteService.activarCliente(token.toString()))
+                .isInstanceOf(TokenInvalidoException.class)
+                .hasMessageContaining("no existe");
+    }
+
+    /**
+     * Verifica que un token ya canjeado no pueda volver a activar la cuenta.
+     */
+    @Test
+    void activarCliente_deberiaLanzarExcepcion_cuandoTokenYaFueUsado() {
+        UUID token = UUID.randomUUID();
+        TokenActivacion tokenActivacion = tokenVigente(token, true);
+        when(tokenActivacionRepository.findByToken(token)).thenReturn(Optional.of(tokenActivacion));
+
+        assertThatThrownBy(() -> clienteService.activarCliente(token.toString()))
+                .isInstanceOf(TokenInvalidoException.class)
+                .hasMessageContaining("ya fue utilizado");
+    }
+
+    /**
+     * Verifica que un token cuya fecha de expiración ya pasó sea rechazado.
+     */
+    @Test
+    void activarCliente_deberiaLanzarExcepcion_cuandoTokenExpiro() {
+        UUID token = UUID.randomUUID();
+        TokenActivacion tokenActivacion = TokenActivacion.builder()
+                .token(token)
+                .fechaExpiracion(LocalDateTime.now().minusHours(1))
+                .usado(false)
+                .cliente(clienteEntity)
+                .build();
+        when(tokenActivacionRepository.findByToken(token)).thenReturn(Optional.of(tokenActivacion));
+
+        assertThatThrownBy(() -> clienteService.activarCliente(token.toString()))
+                .isInstanceOf(TokenInvalidoException.class)
+                .hasMessageContaining("expiró");
+    }
+
+    /**
+     * Verifica que un token con formato no UUID sea rechazado sin consultar la base de datos.
+     */
+    @Test
+    void activarCliente_deberiaLanzarExcepcion_cuandoFormatoInvalido() {
+        assertThatThrownBy(() -> clienteService.activarCliente("no-soy-un-uuid"))
+                .isInstanceOf(TokenInvalidoException.class)
+                .hasMessageContaining("formato inválido");
+
+        verifyNoInteractions(tokenActivacionRepository);
+    }
+
+    private TokenActivacion tokenVigente(UUID token, boolean usado) {
+        return TokenActivacion.builder()
+                .token(token)
+                .fechaExpiracion(LocalDateTime.now().plusHours(24))
+                .usado(usado)
+                .cliente(clienteEntity)
+                .build();
     }
 }

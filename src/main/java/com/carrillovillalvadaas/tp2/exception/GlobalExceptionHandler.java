@@ -97,6 +97,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
 
+    /**
+     * Intercepta la excepción {@link TokenInvalidoException} cuando el token de
+     * activación es inexistente, tiene formato inválido, ya fue usado o está vencido.
+     *
+     * @param ex Excepción capturada con el motivo del rechazo del token.
+     * @return Una {@link ResponseEntity} con el error y estado HTTP 400 (BAD_REQUEST).
+     */
+    @ExceptionHandler(TokenInvalidoException.class)
+    public ResponseEntity<Map<String, Object>> handleTokenInvalido(TokenInvalidoException ex) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("timestamp", LocalDateTime.now());
+        errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
+        errorResponse.put("error", "Token de activación inválido");
+        errorResponse.put("message", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+    }
+
     @ExceptionHandler(OperacionNoPermitidaException.class)
     public ResponseEntity<Map<String, Object>> handleOperacionNoPermitida(OperacionNoPermitidaException ex) {
         Map<String, Object> errorResponse = new HashMap<>();
