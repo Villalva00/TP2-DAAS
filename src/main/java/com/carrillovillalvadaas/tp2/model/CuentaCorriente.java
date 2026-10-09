@@ -36,6 +36,12 @@ public class CuentaCorriente extends CuentaFinanciera {
 
     /**
      * Costo correspondiente a la comisión de mantenimiento de la cuenta corriente.
+     * <p>
+     * <b>Importante:</b> la liquidación mensual de comisiones usa los montos
+     * fijos globales de {@link com.carrillovillalvadaas.tp2.config.ComisionesProperties}
+     * (configurados en {@code app.comisiones.*}), por lo que este campo no se
+     * utiliza en ese proceso; se conserva solo como costo informativo de la cuenta.
+     * </p>
      */
     @Column(name = "costo_comision_mantenimiento")
     private Double costoComisionMantenimiento;
