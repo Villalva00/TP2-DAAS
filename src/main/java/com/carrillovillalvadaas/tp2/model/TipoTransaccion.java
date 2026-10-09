@@ -24,5 +24,12 @@ public enum TipoTransaccion {
     /**
      * Movimiento correspondiente a la recepción de fondos provenientes de otra cuenta.
      */
-    TRANSFERENCIA_RECIBIDA
+    TRANSFERENCIA_RECIBIDA,
+
+    /**
+     * Débito originado por la comisión de mantenimiento cobrada en la liquidación
+     * mensual. Se registra con los montos globales configurados en
+     * {@link com.carrillovillalvadaas.tp2.config.ComisionesProperties}.
+     */
+    DEBITO_COMISION
 }
