@@ -5,6 +5,7 @@ import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
 import com.carrillovillalvadaas.tp2.event.ClienteRegistradoEvent;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
+import com.carrillovillalvadaas.tp2.exception.TokenInvalidoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
 import com.carrillovillalvadaas.tp2.model.EstadoCliente;
 import com.carrillovillalvadaas.tp2.model.TokenActivacion;
@@ -159,6 +160,61 @@ public class ClienteServiceImpl implements ClienteService {
         tokenActivacionRepository.deleteByClienteId(id);
         clienteRepository.delete(cliente);
         log.info("Cliente con ID {} eliminado correctamente", id);
+    }
+
+    @Override
+    @Transactional
+    public ClienteResponseDto activarCliente(String token) {
+        log.info("Recibida solicitud de activación de cuenta con token: {}", token);
+
+        UUID tokenUuid = parsearToken(token);
+        TokenActivacion tokenActivacion = tokenActivacionRepository.findByToken(tokenUuid)
+                .orElseThrow(() -> new TokenInvalidoException("El token de activación no existe o es inválido."));
+
+        validarToken(tokenActivacion);
+
+        Cliente cliente = tokenActivacion.getCliente();
+        cliente.setEstado(EstadoCliente.ACTIVO);
+        tokenActivacion.setUsado(true);
+
+        clienteRepository.save(cliente);
+        tokenActivacionRepository.save(tokenActivacion);
+        log.info("Cliente {} activado exitosamente", cliente.getId());
+
+        return mapearAResponseDto(cliente);
+    }
+
+    /**
+     * Convierte el token recibido por query param a {@link UUID}. Cualquier formato
+     * que no sea un UUID válido se rechaza con {@link TokenInvalidoException}.
+     *
+     * @param token Valor crudo del token.
+     * @return el token como {@link UUID}.
+     */
+    private UUID parsearToken(String token) {
+        try {
+            return UUID.fromString(token);
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            log.warn("Token de activación con formato inválido: {}", token);
+            throw new TokenInvalidoException("El token de activación tiene un formato inválido.");
+        }
+    }
+
+    /**
+     * Valida que el token existente esté vigente: no debe haber sido usado ni
+     * haber superado su fecha de expiración.
+     *
+     * @param tokenActivacion token recuperado de la base de datos.
+     */
+    private void validarToken(TokenActivacion tokenActivacion) {
+        if (tokenActivacion.isUsado()) {
+            log.warn("Token de activación ya utilizado para el cliente {}", tokenActivacion.getCliente().getId());
+            throw new TokenInvalidoException("El token de activación ya fue utilizado.");
+        }
+        if (tokenActivacion.getFechaExpiracion().isBefore(LocalDateTime.now())) {
+            log.warn("Token de activación expirado para el cliente {}", tokenActivacion.getCliente().getId());
+            throw new TokenInvalidoException("El token de activación expiró.");
+        }
     }
 
     @Override

@@ -74,6 +74,22 @@ public interface ClienteService {
 
 
     /**
+     * Confirma la cuenta de un cliente canjeando su token de activación.
+     * <p>
+     * Valida que el token tenga formato UUID, exista, no haya sido usado y no esté
+     * vencido. Si es válido, el cliente pasa a estado {@code ACTIVO} y el token a
+     * {@code usado = true}.
+     * </p>
+     *
+     * @param token Valor del token de activación (tal como llegó por el query param).
+     * @return El {@link ClienteResponseDto} del cliente activado.
+     * @throws com.carrillovillalvadaas.tp2.exception.TokenInvalidoException si el
+     *         formato es inválido, el token no existe, ya fue usado o está vencido.
+     */
+    ClienteResponseDto activarCliente(String token);
+
+
+    /**
             * Registra un adherente (cónyuge o hijo) vinculado a un titular.
             *
             * @param titularId Identificador del cliente titular.

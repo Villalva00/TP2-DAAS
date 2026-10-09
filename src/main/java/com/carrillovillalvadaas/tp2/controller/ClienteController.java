@@ -61,6 +61,23 @@ public class ClienteController {
     }
 
     /**
+     * Confirma la cuenta de un cliente canjeando su token de activación recibido
+     * por email. El path literal {@code /activar} es más específico que
+     * {@code /{id}} y no entra en conflicto con el mapeo de detalle por UUID.
+     *
+     * @param token Valor del token de activación (query param obligatorio).
+     * @return El {@link ClienteResponseDto} con el cliente en estado {@code ACTIVO}
+     *         y estado HTTP 200 (OK). Errores de token inválido → 400.
+     */
+    @GetMapping("/activar")
+    public ResponseEntity<ClienteResponseDto> activarCliente(@RequestParam("token") String token) {
+        log.info("Recibida solicitud HTTP GET en /api/v1/clientes/activar para confirmar la cuenta");
+        ClienteResponseDto clienteActivado = clienteService.activarCliente(token);
+        log.info("Cliente {} activado correctamente", clienteActivado.getId());
+        return ResponseEntity.ok(clienteActivado);
+    }
+
+    /**
      * Busca y retorna la información pública de un cliente específico según su identificador único universal (UUID).
      * <p>
      * Realiza una consulta por clave primaria en la capa de servicios. Si el recurso no existe,
