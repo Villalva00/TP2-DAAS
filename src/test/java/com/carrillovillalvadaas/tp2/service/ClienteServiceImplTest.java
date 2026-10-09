@@ -3,6 +3,7 @@ package com.carrillovillalvadaas.tp2.service;
 import com.carrillovillalvadaas.tp2.dto.AdherenteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
+import com.carrillovillalvadaas.tp2.event.ClienteRegistradoEvent;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
 import com.carrillovillalvadaas.tp2.model.EstadoCliente;
@@ -19,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -47,6 +49,9 @@ class ClienteServiceImplTest {
 
     @Mock
     private TokenActivacionRepository tokenActivacionRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ClienteServiceImpl clienteService;
@@ -148,6 +153,29 @@ class ClienteServiceImplTest {
     }
 
     /**
+     * Verifica que al crear un cliente se publique el evento de dominio asíncrono
+     * {@link ClienteRegistradoEvent} con los datos primitivos del cliente y su token,
+     * para que el oyente envíe el email de activación sin bloquear el alta.
+     */
+    @Test
+    void crearCliente_deberiaPublicarEventoClienteRegistradoConElToken() {
+        when(clienteRepository.existsByCuilOrEmail(20123456789L, "elias@mail.com")).thenReturn(false);
+        when(clienteRepository.save(any(Cliente.class))).thenReturn(clienteEntity);
+        when(tokenActivacionRepository.save(any(TokenActivacion.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        clienteService.crearCliente(requestDto);
+
+        ArgumentCaptor<ClienteRegistradoEvent> eventoCaptor = ArgumentCaptor.forClass(ClienteRegistradoEvent.class);
+        verify(eventPublisher).publishEvent(eventoCaptor.capture());
+
+        ClienteRegistradoEvent evento = eventoCaptor.getValue();
+        assertThat(evento.clienteId()).isEqualTo(clienteId);
+        assertThat(evento.nombre()).isEqualTo("Elias Villalba");
+        assertThat(evento.email()).isEqualTo("elias@mail.com");
+        assertThat(evento.token()).isNotNull();
+    }
+
+    /**
      * Verifica que se lance una excepción cuando se intenta registrar un cliente
      * con un CUIL o correo electrónico que ya se encuentra registrado en el sistema.
      */
@@ -231,6 +259,11 @@ class ClienteServiceImplTest {
         assertThat(resultado.getParentesco()).isEqualTo("CONYUGE");
         assertThat(resultado.getEstado()).isEqualTo("PENDIENTE_ACTIVACION");
         verify(tokenActivacionRepository).save(any(TokenActivacion.class));
+
+        ArgumentCaptor<ClienteRegistradoEvent> eventoCaptor = ArgumentCaptor.forClass(ClienteRegistradoEvent.class);
+        verify(eventPublisher).publishEvent(eventoCaptor.capture());
+        assertThat(eventoCaptor.getValue().email()).isEqualTo("laura@mail.com");
+        assertThat(eventoCaptor.getValue().token()).isNotNull();
     }
 
     @Test

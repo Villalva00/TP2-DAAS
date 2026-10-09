@@ -14,5 +14,15 @@ services:
     volumes:
       - tp2_mysql_data:/var/lib/mysql
 
+  # Servidor SMTP de desarrollo (captura los emails, no los envía de verdad).
+  # UI en http://localhost:8025 · SMTP en localhost:1025 (coincide con application.properties).
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: sistema_bancario_mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   tp2_mysql_data:
