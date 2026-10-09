@@ -3,6 +3,7 @@ package com.carrillovillalvadaas.tp2.service.impl;
 import com.carrillovillalvadaas.tp2.dto.AdherenteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteRequestDto;
 import com.carrillovillalvadaas.tp2.dto.ClienteResponseDto;
+import com.carrillovillalvadaas.tp2.event.ClienteRegistradoEvent;
 import com.carrillovillalvadaas.tp2.exception.RecursoNoEncontradoException;
 import com.carrillovillalvadaas.tp2.model.Cliente;
 import com.carrillovillalvadaas.tp2.model.EstadoCliente;
@@ -11,6 +12,7 @@ import com.carrillovillalvadaas.tp2.model.TipoCliente;
 import com.carrillovillalvadaas.tp2.repository.ClienteRepository;
 import com.carrillovillalvadaas.tp2.repository.TokenActivacionRepository;
 import com.carrillovillalvadaas.tp2.service.ClienteService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +40,7 @@ public class ClienteServiceImpl implements ClienteService {
 
     private final ClienteRepository clienteRepository;
     private final TokenActivacionRepository tokenActivacionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * {@inheritDoc}
@@ -72,7 +75,8 @@ public class ClienteServiceImpl implements ClienteService {
         Cliente clienteGuardado = clienteRepository.save(clienteEntity);
         log.info("Cliente registrado exitosamente con ID: {}", clienteGuardado.getId());
 
-        generarTokenActivacion(clienteGuardado);
+        UUID token = generarTokenActivacion(clienteGuardado);
+        publicarClienteRegistrado(clienteGuardado, token);
 
         return mapearAResponseDto(clienteGuardado);
     }
@@ -183,11 +187,11 @@ public class ClienteServiceImpl implements ClienteService {
                 .parentesco(dto.getParentesco())
                 .estado(EstadoCliente.PENDIENTE_ACTIVACION)
                 .build();
-        // TODO (TP5-B #8): publicar el evento de dominio asíncrono para enviar el email de activación.
         Cliente guardado = clienteRepository.save(adherente);
         log.info("Adherente registrado con ID: {}", guardado.getId());
 
-        generarTokenActivacion(guardado);
+        UUID token = generarTokenActivacion(guardado);
+        publicarClienteRegistrado(guardado, token);
 
         return mapearAResponseDto(guardado);
     }
@@ -230,8 +234,9 @@ public class ClienteServiceImpl implements ClienteService {
      * {@link ClienteResponseDto}.
      *
      * @param cliente Cliente recién persistido en estado PENDIENTE_ACTIVACION.
+     * @return el valor UUID del token generado, para publicarlo en el evento de dominio.
      */
-    private void generarTokenActivacion(Cliente cliente) {
+    private UUID generarTokenActivacion(Cliente cliente) {
         TokenActivacion token = TokenActivacion.builder()
                 .token(UUID.randomUUID())
                 .fechaExpiracion(LocalDateTime.now().plusHours(24))
@@ -241,5 +246,23 @@ public class ClienteServiceImpl implements ClienteService {
 
         tokenActivacionRepository.save(token);
         log.info("Token de activación generado para el cliente {} (expira {})", cliente.getId(), token.getFechaExpiracion());
+        return token.getToken();
+    }
+
+    /**
+     * Publica el evento de dominio {@link ClienteRegistradoEvent} para que, una vez
+     * confirmada la transacción, el oyente asíncrono envíe el email HTML de activación.
+     * <p>
+     * Se publican solo datos primitivos (no la entidad JPA) para que el oyente no dependa
+     * de una sesión de persistencia ya cerrada.
+     * </p>
+     *
+     * @param cliente Cliente recién guardado.
+     * @param token   Valor UUID del token de activación.
+     */
+    private void publicarClienteRegistrado(Cliente cliente, UUID token) {
+        eventPublisher.publishEvent(new ClienteRegistradoEvent(
+                cliente.getId(), cliente.getNombre(), cliente.getEmail(), token));
+        log.debug("Evento ClienteRegistradoEvent publicado para el cliente {}", cliente.getId());
     }
 }
