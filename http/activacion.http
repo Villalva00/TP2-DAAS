@@ -1,0 +1,356 @@
+### ============================================================
+### TP5-B - Alta y activación de cliente por email + token
+###
+### Requisitos:
+###   - docker compose up -d   (MySQL 3308 + Mailpit 1025 / UI 8025)
+###   - app corriendo: bash ./mvnw spring-boot:run
+###
+### Los requests están pensados para correrse EN ORDEN (1 a 14).
+### Cada corrida genera CUIL / email / CBU únicos, así que se puede
+### repetir el escenario completo sin reiniciar la app.
+###
+### El token se extrae AUTOMÁTICAMENTE de Mailpit (API en :8025).
+### Si el request 5 falla (el email es asíncrono), esperá un segundo
+### y volvé a ejecutarlo.
+### ============================================================
+
+@host = http://localhost:8080
+@mailpit = http://localhost:8025
+
+### 1. Alta de titular -> 201, estado PENDIENTE_ACTIVACION, sin token en la respuesta
+< {%
+    const sufijo = String(Date.now()).slice(-9);
+    client.global.set("cuil", "20" + sufijo);
+    client.global.set("email", "activacion." + sufijo + "@email.com");
+    client.global.set("cbu", "9" + String(Date.now()).slice(-13));
+    client.global.set("alias", "ACT.TEST." + sufijo);
+%}
+POST {{host}}/api/v1/clientes
+Content-Type: application/json
+
+{
+  "nombre": "Cliente Billy",
+  "cuil": "{{cuil}}",
+  "email": "{{email}}",
+  "telefono": "3885556677",
+  "direccion": "Av. Prueba 111"
+}
+
+> {%
+    client.test("Alta (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+    client.test("Estado PENDIENTE_ACTIVACION", function () {
+        client.assert(response.body.estado === "PENDIENTE_ACTIVACION", "estado = " + response.body.estado);
+    });
+    client.test("La respuesta NO expone el token", function () {
+        client.assert(response.body.token === undefined && response.body.tokenActivacion === undefined,
+            "El token no debe viajar en la respuesta");
+    });
+    client.global.set("clienteId", response.body.id);
+%}
+
+### 2. Consultar el cliente -> 200, sigue PENDIENTE_ACTIVACION
+GET {{host}}/api/v1/clientes/{{clienteId}}
+
+> {%
+    client.test("Cliente pendiente (200)", function () {
+        client.assert(response.status === 200, "Se esperaba 200 y llegó " + response.status);
+        client.assert(response.body.estado === "PENDIENTE_ACTIVACION", "estado = " + response.body.estado);
+    });
+%}
+
+### 3. Crear una cuenta para el cliente (para probar que no puede operar hasta activarse) -> 201
+POST {{host}}/api/v1/cuentas
+Content-Type: application/json
+
+{
+  "cbu": "{{cbu}}",
+  "alias": "{{alias}}",
+  "saldoOperativo": 1000,
+  "tipoCuenta": "CAJA_AHORRO",
+  "clienteId": "{{clienteId}}",
+  "tasaInteresAnual": 40.0,
+  "cupoExtraccionesSinCosto": 5
+}
+
+> {%
+    client.test("Cuenta creada (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### 4. Depósito de cliente PENDIENTE_ACTIVACION -> 403 "no está activo"
+POST {{host}}/api/v1/transacciones/deposito
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbu}}",
+  "monto": 500.00,
+  "tipoTransaccion": "DEPOSITO",
+  "clienteEjecutorId": "{{clienteId}}"
+}
+
+> {%
+    client.test("Pendiente no puede operar (403)", function () {
+        client.assert(response.status === 403, "Se esperaba 403 y llegó " + response.status);
+        client.assert(response.body.message.indexOf("no está activo") !== -1, "El mensaje debe indicar que no está activo");
+    });
+%}
+
+### 5. Buscar el email de activación en Mailpit y extraer el token
+### (API de Mailpit: busca por destinatario, lee el mensaje y saca el UUID del enlace)
+GET {{mailpit}}/api/v1/search?query=to:{{email}}
+
+> {%
+    client.test("Mailpit recibió el email (1 mensaje)", function () {
+        client.assert(response.status === 200, "Mailpit respondió " + response.status);
+        client.assert(response.body.messages && response.body.messages.length >= 1,
+            "No llegó el email todavía: esperá un segundo y reintentá este request");
+    });
+    if (response.body.messages && response.body.messages.length >= 1) {
+        client.global.set("mailId", response.body.messages[0].ID);
+    }
+%}
+### 6. Leer el email y guardar el token de activación
+GET {{mailpit}}/api/v1/message/{{mailId}}
+
+> {%
+    const contenido = (response.body.HTML || "") + " " + (response.body.Text || "");
+    const m = contenido.match(/activar\?token=([0-9a-fA-F-]{36})/);
+    client.test("El email contiene el enlace de activación con el token", function () {
+        client.assert(m !== null, "No se encontró el enlace /activar?token=<uuid> en el email");
+    });
+    client.test("Asunto de bienvenida", function () {
+        client.assert(response.body.Subject.indexOf("Bienvenido") !== -1, "Asunto: " + response.body.Subject);
+    });
+    if (m) {
+        client.global.set("tokenActivacion", m[1]);
+    }
+%}
+
+### 7. Token con formato inválido -> 400 "formato inválido"
+GET {{host}}/api/v1/clientes/activar?token=no-soy-un-uuid
+
+> {%
+    client.test("Formato inválido (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+        client.assert(response.body.message.indexOf("formato inválido") !== -1, "message = " + response.body.message);
+    });
+%}
+
+### 8. Token inexistente (UUID aleatorio) -> 400 "no existe o es inválido"
+GET {{host}}/api/v1/clientes/activar?token=00000000-0000-0000-0000-000000000000
+
+> {%
+    client.test("Token inexistente (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+        client.assert(response.body.message.indexOf("no existe") !== -1, "message = " + response.body.message);
+    });
+%}
+
+### 9. Activar con el token real del email -> 200, estado ACTIVO
+GET {{host}}/api/v1/clientes/activar?token={{tokenActivacion}}
+
+> {%
+    client.test("Activación exitosa (200)", function () {
+        client.assert(response.status === 200, "Se esperaba 200 y llegó " + response.status);
+        client.assert(response.body.estado === "ACTIVO", "estado = " + response.body.estado);
+    });
+%}
+
+### 10. Reutilizar el mismo token -> 400 "ya fue utilizado"
+GET {{host}}/api/v1/clientes/activar?token={{tokenActivacion}}
+
+> {%
+    client.test("Token reutilizado (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+        client.assert(response.body.message.indexOf("ya fue utilizado") !== -1, "message = " + response.body.message);
+    });
+%}
+
+### 11. Verificar que el cliente quedó ACTIVO -> 200
+GET {{host}}/api/v1/clientes/{{clienteId}}
+
+> {%
+    client.test("Cliente ACTIVO (200)", function () {
+        client.assert(response.status === 200, "Se esperaba 200 y llegó " + response.status);
+        client.assert(response.body.estado === "ACTIVO", "estado = " + response.body.estado);
+    });
+%}
+
+### 12. Mismo depósito del request 4, ahora con el cliente activo -> 201
+POST {{host}}/api/v1/transacciones/deposito
+Content-Type: application/json
+
+{
+  "cbuCuenta": "{{cbu}}",
+  "monto": 500.00,
+  "tipoTransaccion": "DEPOSITO",
+  "clienteEjecutorId": "{{clienteId}}"
+}
+
+> {%
+    client.test("Cliente activo puede operar (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+%}
+
+### ------------------------------------------------------------
+### TOKEN EXPIRADO (requiere tocar la base a mano)
+###
+### a) Ejecutá el request 13 (alta de otro cliente) y el 14
+###    (obtiene su token desde Mailpit).
+### b) Corré en MySQL (sustituí el UUID por el token impreso en el 14,
+###    o usá el UPDATE genérico que toma el último token sin usar):
+###
+###   UPDATE token_activacion
+###   SET fecha_expiracion = NOW() - INTERVAL 1 HOUR
+###   WHERE usado = 0
+###   ORDER BY created_date DESC
+###   LIMIT 1;
+###
+### c) Ejecutá el request 15 -> debe dar 400 "expiró".
+### ------------------------------------------------------------
+
+### 13. Alta de un segundo cliente (para el caso de token expirado) -> 201
+< {%
+    const sufijo = String(Date.now()).slice(-9);
+    client.global.set("cuil2", "27" + sufijo);
+    client.global.set("email2", "expirado." + sufijo + "@email.com");
+%}
+POST {{host}}/api/v1/clientes
+Content-Type: application/json
+
+{
+  "nombre": "Cliente Token Expirado",
+  "cuil": "{{cuil2}}",
+  "email": "{{email2}}",
+  "telefono": "3885550000",
+  "direccion": "Calle Vencida 1"
+}
+
+> {%
+    client.test("Alta del segundo cliente (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+    });
+    client.global.set("clienteId2", response.body.id);
+%}
+
+### 14. Buscar el email del segundo cliente en Mailpit (guarda el id del mensaje)
+GET {{mailpit}}/api/v1/search?query=to:{{email2}}
+
+> {%
+    client.test("Email del segundo cliente recibido", function () {
+        client.assert(response.body.messages && response.body.messages.length >= 1,
+            "No llegó el email todavía: esperá un segundo y reintentá");
+    });
+    if (response.body.messages && response.body.messages.length >= 1) {
+        client.global.set("mailId2", response.body.messages[0].ID);
+    }
+%}
+
+### 14b. Leer el email y guardar el token del segundo cliente
+GET {{mailpit}}/api/v1/message/{{mailId2}}
+
+> {%
+    const contenido = (response.body.HTML || "") + " " + (response.body.Text || "");
+    const m = contenido.match(/activar\?token=([0-9a-fA-F-]{36})/);
+    if (m) {
+        client.global.set("tokenExpirado", m[1]);
+        client.log("Token del segundo cliente: " + m[1]);
+    }
+    client.test("Token extraído del email", function () {
+        client.assert(m !== null, "No se encontró el token en el email");
+    });
+%}
+
+### 15. Activar con el token YA VENCIDO (después de correr el UPDATE en MySQL) -> 400 "expiró"
+GET {{host}}/api/v1/clientes/activar?token={{tokenExpirado}}
+
+> {%
+    client.test("Token expirado (400)", function () {
+        client.assert(response.status === 400, "Se esperaba 400 y llegó " + response.status);
+        client.assert(response.body.message.indexOf("expiró") !== -1,
+            "message = " + response.body.message + " (¿corriste el UPDATE en MySQL?)");
+    });
+%}
+
+### 16. El cliente del token vencido sigue PENDIENTE_ACTIVACION -> 200
+GET {{host}}/api/v1/clientes/{{clienteId2}}
+
+> {%
+    client.test("Sigue PENDIENTE_ACTIVACION", function () {
+        client.assert(response.status === 200, "Se esperaba 200 y llegó " + response.status);
+        client.assert(response.body.estado === "PENDIENTE_ACTIVACION", "estado = " + response.body.estado);
+    });
+%}
+
+### ------------------------------------------------------------
+### ADHERENTE: también nace PENDIENTE_ACTIVACION y recibe su email
+### ------------------------------------------------------------
+
+### 17. Alta de adherente (HIJO) del titular Juan Pérez (data.sql) -> 201, PENDIENTE_ACTIVACION
+< {%
+    const sufijo = String(Date.now()).slice(-9);
+    client.global.set("cuil3", "20" + sufijo);
+    client.global.set("email3", "adherente." + sufijo + "@email.com");
+%}
+POST {{host}}/api/v1/clientes/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/adherentes
+Content-Type: application/json
+
+{
+  "nombre": "Adherente Activacion",
+  "cuil": "{{cuil3}}",
+  "email": "{{email3}}",
+  "telefono": "3886667788",
+  "direccion": "Av. Principal 123",
+  "parentesco": "HIJO"
+}
+
+> {%
+    client.test("Adherente creado (201)", function () {
+        client.assert(response.status === 201, "Se esperaba 201 y llegó " + response.status);
+        client.assert(response.body.tipoCliente === "ADHERENTE", "tipoCliente = " + response.body.tipoCliente);
+        client.assert(response.body.estado === "PENDIENTE_ACTIVACION", "estado = " + response.body.estado);
+    });
+    client.global.set("adherenteId", response.body.id);
+%}
+
+### 18. Buscar el email del adherente en Mailpit
+GET {{mailpit}}/api/v1/search?query=to:{{email3}}
+
+> {%
+    client.test("Email del adherente recibido", function () {
+        client.assert(response.body.messages && response.body.messages.length >= 1,
+            "No llegó el email todavía: esperá un segundo y reintentá");
+    });
+    if (response.body.messages && response.body.messages.length >= 1) {
+        client.global.set("mailId3", response.body.messages[0].ID);
+    }
+%}
+
+### 19. Leer el email del adherente y guardar su token
+GET {{mailpit}}/api/v1/message/{{mailId3}}
+
+> {%
+    const contenido = (response.body.HTML || "") + " " + (response.body.Text || "");
+    const m = contenido.match(/activar\?token=([0-9a-fA-F-]{36})/);
+    client.test("Token del adherente extraído", function () {
+        client.assert(m !== null, "No se encontró el token en el email");
+    });
+    if (m) {
+        client.global.set("tokenAdherente", m[1]);
+    }
+%}
+
+### 20. Activar al adherente -> 200, ACTIVO, tipoCliente ADHERENTE
+GET {{host}}/api/v1/clientes/activar?token={{tokenAdherente}}
+
+> {%
+    client.test("Adherente activado (200)", function () {
+        client.assert(response.status === 200, "Se esperaba 200 y llegó " + response.status);
+        client.assert(response.body.estado === "ACTIVO", "estado = " + response.body.estado);
+        client.assert(response.body.tipoCliente === "ADHERENTE", "tipoCliente = " + response.body.tipoCliente);
+    });
+%}
