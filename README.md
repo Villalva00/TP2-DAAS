@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/Status-100%25%20Funcionando-success?style=for-the-badge&logo=springboot" alt="Status">
-  <img src="https://img.shields.io/badge/Arquitectura-JOINED-blue?style=for-the-badge&logo=java" alt="Architecture">
-  <img src="https://img.shields.io/badge/Base%20de%20Datos-MySQL%20%2F%20Binary%20UUIDs-orange?style=for-the-badge&logo=mysql" alt="Database">
-</p>
+
 
 <h1 align="center"> 🏔️ PunaCode Labs 🚀</h1>
 <h3 align="center">Sistema Bancario Inteligente — Trabajo Práctico N° 2</h3>
@@ -10,7 +6,11 @@
 <p align="center">
   <em>"Construyendo cimientos robustos desde las alturas de Jujuy para el mundo."</em>
 </p>
-
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-100%25%20Funcionando-success?style=for-the-badge&logo=springboot" alt="Status">
+  <img src="https://img.shields.io/badge/Arquitectura-JOINED-blue?style=for-the-badge&logo=java" alt="Architecture">
+  <img src="https://img.shields.io/badge/Base%20de%20Datos-MySQL%20%2F%20Binary%20UUIDs-orange?style=for-the-badge&logo=mysql" alt="Database">
+</p>
 ---
 
 ## 🏦 Sobre el Proyecto
