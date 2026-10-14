@@ -1,0 +1,184 @@
+{
+	"info": {
+		"_postman_id": "7f3c0b0a-4f2e-4d9a-9b1c-2c9a7f0e5d11",
+		"name": "TP2-DAAS · Sistema Bancario (Entrega TP5)",
+		"description": "Colección de pruebas para la entrega TP5 del Sistema Bancario.\n\nEscenarios cubiertos:\n1. Alta + activación de cliente (token por email).\n2. Token expirado → 400.\n3. Adherente que deposita (rechazo) → 403.\n4. Exceder tope diario de extracción → 400.\n5. Liquidación manual de comisiones → 200.\n\nVariables de colección:\n- baseUrl: http://localhost:8080/api/v1\n- tokenActivacion: token UUID tomado del email en Mailpit (http://localhost:8025).\n- tokenExpirado: token vencido generado a propósito (ver pasos en el README).\n\nRequisito: app corriendo + `docker compose up -d` (MySQL en 3308 y Mailpit en 1025/8025).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "TP5 · Alta y activación",
+			"item": [
+				{
+					"name": "1a · Alta de cliente (titular)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombre\": \"Cliente Demo Postman\",\n  \"cuil\": \"20398887766\",\n  \"email\": \"demo.postman@email.com\",\n  \"telefono\": \"3885556677\",\n  \"direccion\": \"Av. Prueba 111\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/clientes",
+							"host": ["{{baseUrl}}"],
+							"path": ["clientes"]
+						},
+						"description": "Registra el titular en estado PENDIENTE_ACTIVACION y envía el email de activación a Mailpit. Respuesta esperada: 201 con el DTO del cliente (el token NO viaja en la respuesta)."
+					},
+					"response": []
+				},
+				{
+					"name": "1b · Activar cliente con token (de Mailpit)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/clientes/activar?token={{tokenActivacion}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["clientes", "activar"],
+							"query": [
+								{ "key": "token", "value": "{{tokenActivacion}}" }
+							]
+						},
+						"description": "Canjea el token del email (HTML en Mailpit → botón / link de activación). Seteá la variable `tokenActivacion` con el UUID del enlace. Respuesta esperada: 200 con estado ACTIVO."
+					},
+					"response": []
+				},
+				{
+					"name": "1c · Alta de adherente (HIJO) para un titular",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombre\": \"Hijo Demo\",\n  \"cuil\": \"20456667788\",\n  \"email\": \"hijo.demo@email.com\",\n  \"telefono\": \"3886667788\",\n  \"direccion\": \"Av. Prueba 111\",\n  \"parentesco\": \"HIJO\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/clientes/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11/adherentes",
+							"host": ["{{baseUrl}}"],
+							"path": ["clientes", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", "adherentes"]
+						},
+						"description": "Alta de adherente asociado al titular Juan Pérez (data.sql). Queda PENDIENTE_ACTIVACION y debe activarse igual que un titular. Respuesta esperada: 201 con tipoCliente ADHERENTE y parentesco HIJO."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "TP5 · Errores de regla de negocio",
+			"item": [
+				{
+					"name": "2 · Token expirado → 400",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/clientes/activar?token={{tokenExpirado}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["clientes", "activar"],
+							"query": [
+								{ "key": "token", "value": "{{tokenExpirado}}" }
+							]
+						},
+						"description": "Activa un cliente con un token vencido. Para generar uno: alterá en la base `fecha_expiracion` de un token sin usar (ver README). Respuesta esperada: 400 con error \"Token de activación inválido\" y mensaje de expiración."
+					},
+					"response": []
+				},
+				{
+					"name": "3 · Adherente que deposita → 403 (rechazo)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"cbuCuenta\": \"31000000000001\",\n  \"monto\": 5000,\n  \"tipoTransaccion\": \"DEPOSITO\",\n  \"clienteEjecutorId\": \"e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/transacciones/deposito",
+							"host": ["{{baseUrl}}"],
+							"path": ["transacciones", "deposito"]
+						},
+						"description": "Laura Ruiz (adherente, data.sql) intenta depositar en la cuenta de su titular. Regla: los adherentes solo pueden extraer. Respuesta esperada: 403 Operación no permitida."
+					},
+					"response": []
+				},
+				{
+					"name": "4 · Exceder tope diario → 400 (rechazo)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"cbuCuenta\": \"31000000000001\",\n  \"monto\": 100000,\n  \"tipoTransaccion\": \"EXTRACCION\",\n  \"clienteEjecutorId\": \"e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/transacciones/extraccion",
+							"host": ["{{baseUrl}}"],
+							"path": ["transacciones", "extraccion"]
+						},
+						"description": "Laura Ruiz (adherente) intenta extraer $100.000 el mismo día. Tope diario adherente = $70.000. Respuesta esperada: 400 \"Límite diario de extracción excedido\" con tope y acumulado; además se registra la transacción como RECHAZADA."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "TP5 · Liquidación de comisiones",
+			"item": [
+				{
+					"name": "5a · Liquidación manual",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/admin/comisiones/liquidar",
+							"host": ["{{baseUrl}}"],
+							"path": ["admin", "comisiones", "liquidar"]
+						},
+						"description": "Dispara la liquidación mensual sobre las cuentas ACTIVA de la base. Respuesta esperada: 200 con ResultadoLiquidacion {\"procesadas\":3,\"fallidas\":0,\"totalDebitado\":9000.0} sobre el dataset seed (3 ACTIVA: 1 CC = 5000 + 2 CA = 2000 cada una)."
+					},
+					"response": []
+				},
+				{
+					"name": "5b · Verificar débitos DEBITO_COMISION",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/transacciones/tipo/DEBITO_COMISION",
+							"host": ["{{baseUrl}}"],
+							"path": ["transacciones", "tipo", "DEBITO_COMISION"]
+						},
+						"description": "Lista las transacciones DEBITO_COMISION. Respuesta esperada: 200 con un item por cuenta debitada (COMPLETADA, monto 2000/5000, sin cbuDestino, ejecutor nulo). Al re-ejecutar 5a el total no cambia (idempotencia mensual)."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080/api/v1",
+			"type": "string"
+		},
+		{
+			"key": "tokenActivacion",
+			"value": "PEGAR_AQUI_EL_TOKEN_DEL_EMAIL_MAILPIT",
+			"type": "string"
+		},
+		{
+			"key": "tokenExpirado",
+			"value": "1159a861-9b27-4e98-9a1f-2c8d3b4c5d6e",
+			"type": "string"
+		}
+	]
+}
